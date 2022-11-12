@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no"><!-- 网页的宽度自动适应手机屏幕的宽度 -->
+    <title>Loading</title>
+    <link rel="stylesheet" data-name="vs/editor/editor.main" href="/libs/monaco-editor/0.55.1/min/vs/editor/editor.main.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+        }
+        html, body {
+            width: 100%;
+            height: 100%;
+        }
+        html {
+            overflow: hidden;
+        }
+        #container {
+            width: 100%;
+            height: 100%;
+        }
+        #btn {
+            position: fixed; bottom: 40px; right: 40px; /* 固定定位在屏幕右下角 */
+            z-index: 10; /* 置顶显示 */
+            width: 40px; height: 40px; /* 固定大小为 40x40 */
+            display: flex;
+            line-height: 40px;
+            justify-content: center;
+            background-color: white;
+            border-radius: 50%;
+            cursor: pointer;
+            transition-duration: .3s;
+            box-shadow: 0 0 8px 0 rgb(255, 255, 255, 0.82);
+            -webkit-tap-highlight-color: transparent; /* 去除移动端点击后出现的阴影 */
+        }
+        #btn:active {
+            box-shadow: 0 0;
+            transform: scale(0.95);
+        }
+        #btn svg {
+            width: 24px;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="container"></div>
+    <div id="btn" style="display: none;">
+        <svg style="display: none;" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 512 512"><path d="M336 112a80 80 0 0 0-160 0v96" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32"></path><rect x="96" y="208" width="320" height="272" rx="48" ry="48" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32"></rect></svg>
+        <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 512 512"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32" d="M416 128L192 384l-96-96"></path></svg>
+    </div>
+    <div id="dialog" style="z-index: 9; position: fixed; top: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, .2); display: flex; justify-content: center; align-items: center; visibility: hidden;">
+        <div style="min-width: 300px; min-height: 196px; width: 80%; height: 80%; color: #ffffffe6; background-color: #2e3033; box-shadow: 0 2px 12px 0 rgba(0, 0, 0, .2); border-radius: 8px; padding: 12px; display: flex; flex-direction: column;">
+            <div style="text-align: right;">
+                <button style="position: relative; width: 16px; height: 16px; border: 0; background: transparent; cursor: pointer; color: white;">
+                    <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 32 32"><path d="M24 9.4L22.6 8L16 14.6L9.4 8L8 9.4l6.6 6.6L8 22.6L9.4 24l6.6-6.6l6.6 6.6l1.4-1.4l-6.6-6.6L24 9.4z" fill="currentColor"></path></svg>
+                </button>
+            </div>
+            <div style="margin-top: 10px; overflow: auto; white-space: nowrap; flex-grow: 1;"></div>
+        </div>
+    </div>
+    <script src="/libs/typescript/5.9.2/typescript.min.js"></script>
+    <script src="/libs/sweetalert/2.1.2/sweetalert.min.js"></script>
+    <script src="/libs/monaco-editor/0.55.1/min/vs/loader.js"></script>
+    <script>
+        require.config({ paths: { "vs": window.location.origin + "/libs/monaco-editor/0.55.1/min/vs" } })
+        require(["vs/editor/editor.main"], (app => app.mount.bind(app))({
+            // 示例模板代码
+            examples: {
+                controller: `export default function (ctx: ServiceContext): ServiceResponse | Uint8Array | any {\n    return "hello, world"\n}`,
+                controller2: `export default (app => app.run.bind(app))(new class {\n    public run(ctx: ServiceContext) {\n        return "hello, world"\n    }\n})`,
+                typescript: `export default function () {\n    \n}`,
+                html: `<!DOCTYPE html>\n<html>\n\n<head>\n    <meta charset="utf-8" />\n    <title></title>\n</head>\n\n<body>\n    hello, {{ .name }}\n</body>\n\n</html>`,
+                vue: `<template>\n    <p>hello, {{ name }}</p>\n</template>\n\n\x3Cscript>\n    module.exports = {\n        data: function() {\n            return {\n                name: "world"\n            }\n        }\n    }\n\x3C/script>\n\n<style scoped>\n\n</style>`,
+                json: `{\n\t\n}`,
+            },
+
+            // 页面模型对象，用于双向绑定
+            vdata: (function (data, funcs = {}) {
+                return new Proxy({
+                    ...data,
+                    $bind(property, func) { // 绑定属性的渲染方法，当对应属性被赋值时触发
+                        func.call(data, data[property]) // 初始化渲染一次
+                        funcs[property] = func
+                    },
+                }, {
+                    get: function(target, property) {
+                        return target[property]
+                    },
+                    set: function(target, property, value) {
+                        if (funcs[property]) {
+                            funcs[property].call(target, value)
+                        }
+                        target[property] = value
+                    },
+                })
+            })({
+                readonly: false, // 源码是否只读
+                loading: true, // 是否加载中，如果是加载中则不可提交源码
+                broadcaster: null, // 广播频道，用于跨页面通讯，如修改 module 源码时通知其它编辑器页面实时更新依赖
+                abortController: null, // 中断控制器，用于主动中断 fetch 请求
+                version: "", // 版本号，即最后一次修改时间
+            }),
+
+            // 请求入参
+            input: (function () {
+                // 获取 URL 查询参数
+                const params = new URL(window.location).searchParams,
+                    name = params.get("name"),
+                    type = params.get("type"),
+                    example = params.has("example")
+
+                // 获取代码坐标锚点
+                const groups = window.location.hash.substring(1).match(/(?<startLineNumber>\d*),(?<startColumn>\d*)-(?<endLineNumber>\d*),(?<endColumn>\d*)/)?.groups,
+                    selection = {
+                        ...(groups?.startLineNumber && {
+                            startLineNumber: Number(groups.startLineNumber),
+                            startColumn: Number(groups.startColumn) || 0,
+                        }),
+                        ...(groups?.endLineNumber && {
+                            endLineNumber: Number(groups.endLineNumber),
+                            endColumn: Number(groups.endColumn) || 0,
+                        }),
+                    }
+
+                return { name, type, selection, example, }
+            })(),
+
+            // 渲染 Monaco Editor
+            render(sourceLanguage) {
+                const that = this,
+                    editorLanguage = { vue: "html" }[sourceLanguage] || sourceLanguage
+
+                if (editorLanguage === "typescript") {
+                    // 初始化编辑器的编译选项
+                    monaco.languages.typescript.typescriptDefaults.setCompilerOptions({
+                        allowNonTsExtensions: true, // 允许文件名（如 createModel 中的 uri）可以不包含 ".ts" 拓展名（默认为 false，则文件名必须包含 ".ts" 拓展名，否则将出现异常："Could not find source file"）
+                        experimentalDecorators: false, // 由于当前已支持新的装饰器语法（typescript 5.0 及以上版本），因此需要禁用旧的实验性装饰器语法，否则将影响新语法的识别
+                        downlevelIteration: true, // 允许迭代器进行迭代
+                        lib: ["esnext"], // 引用的库，如果不指定则默认会包含所有的库（如 "dom"、"scripthost" 等）
+                        moduleResolution: ts.ModuleResolutionKind.NodeJs, // 指定使用 nodejs 模块解析策略，否则在 import node_modules/* 时无法解析模块
+                    })
+
+                    // 设置编辑器的代码自动补全
+                    monaco.languages.registerCompletionItemProvider("typescript", {
+                        provideCompletionItems: function() {
+                            return {
+                                suggestions: [
+                                    ...(that.input.type === "controller" && [
+                                        {
+                                            label: "main",
+                                            insertText: that.examples.controller2,
+                                        },
+                                    ] || []),
+                                ],
+                            }
+                        },
+                    })
+
+                    // 预加载全局类型声明文件
+                    Array.from([
+                        "global.d.ts",
+                        that.input.type === "controller" && "global.controller.d.ts",
+                    ]).filter(i => i).forEach(uri => {
+                        fetch(uri).then(r => r.text()).then(t => {
+                            monaco.languages.typescript.typescriptDefaults.addExtraLib(t, uri)
+                        })
+                    })
+
+                    // 预加载自定义模块
+                    fetch("source?type=module&size=999&content").then(r => r.json()).then(r => {
+                        r.data.sources?.filter(i => i.name !== that.input.name || i.type !== that.input.type)?.forEach(s => {
+                            monaco.languages.typescript.typescriptDefaults.addExtraLib(s.content, s.name + ".ts")
+                        })
+                    })
+
+                    // 注册广播通道，并监听自定义模块更新事件消息
+                    if (BroadcastChannel) {
+                        that.broadcaster = new BroadcastChannel("cube")
+                        that.broadcaster.onmessage = function({ data }) {
+                            if (data.action === "update" && data.type === "module") {
+                                fetch(`source?name=${data.name}&type=${data.type}`).then(r => r.json()).then(r => {
+                                    r.data.sources?.forEach(s => {
+                                        monaco.languages.typescript.typescriptDefaults.addExtraLib(s.content, s.name + ".ts")
+                                    })
+                                })
+                            }
+                        }
+                    }
+
+                    // 劫持诊断错误提示
+                    const setModelMarkers = monaco.editor.setModelMarkers
+                    monaco.editor.setModelMarkers = (model, owner, markers) => {
+                        return setModelMarkers(model, owner, markers.filter(i => {
+                            // 忽略外部 module 链接诊断错误
+                            if (i.code === "2307" && /^Cannot find module 'https?:\/\/.*' or its corresponding type declarations.$/.test(i.message)) {
+                                return false
+                            }
+                            return true
+                        }))
+                    }
+                }
+
+                // 创建 editor
+                const editor = monaco.editor.create(document.querySelector("#container"), {
+                    language: editorLanguage,
+                    theme: "vs-dark",
+                    model: monaco.editor.createModel(that.examples[that.input.type] || that.examples[sourceLanguage] || "", editorLanguage, new monaco.Uri("noname")),
+                    options: {
+                        selectOnLineNumbers: true,
+                        roundedSelection: false,
+                        readOnly: false,
+                        cursorStyle: "line",
+                        automaticLayout: true,
+                    },
+                })
+
+                // 重写 editorService 的 openEditor 方法，实现代码的跳转定义
+                editor._codeEditorService.doOpenEditor = function (editor, input) {
+                    const model = this.findModel(editor, input.resource),
+                        selection = input.options.selection
+                    if (model) {
+                        editor.setModel(model)
+                        that.setEditorFocus(editor, selection)
+                        return
+                    }
+                    const matches = input.resource.path.match(/^(?:\/(node_modules\/\w+)|\.?\/(\w+))\.ts$/),
+                        name = matches?.[1] || matches?.[2]
+                    if (name) {
+                        window.open(`/editor.html?name=${name}&type=module#${selection.startLineNumber},${selection.startColumn}-${selection.endLineNumber},${selection.endColumn}`)
+                    }
+                }
+
+                // 注册事件以及按键命令
+                editor.onDidFocusEditorText(() => {
+                    if (that.vdata.readonly) {
+                        document.activeElement.blur() // 防止在只读模式下，移动端点击编辑框时弹出软键盘
+                    }
+                })
+
+                if (editorLanguage === "typescript") {
+                    // 注册弹窗关闭事件
+                    document.querySelector("#dialog > div > div > button").onclick = function() {
+                        this.parentNode.parentNode.parentNode.style.visibility = "hidden"
+                        that.abortController?.abort() // 取消请求
+                    }
+                    // 注册命令
+                    editor.addAction({
+                        id: "run",
+                        label: "Run",
+                        keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyR],
+                        contextMenuGroupId: "navigation",
+                        contextMenuOrder: 3,
+                        run() {
+                            that.dialog((p) => {
+                                const { signal } = that.abortController = new AbortController()
+                                fetch("source", {
+                                    method: "EVAL",
+                                    body: that.compile(editor.getValue(), that.input.name),
+                                    signal,
+                                }).then(r => r.json()).then(({ data, message, }) => {
+                                    p(data?.logs || [["", new Date().toLocaleTimeString() + ".", message]])
+                                })
+                            })
+                        },
+                    })
+                }
+
+                // 注册全局 resize 事件，当浏览器窗口大小发生改变时，编辑器自动调整大小
+                window.onresize = () => editor.layout()
+
+                // 注册 editor 快捷键
+                that.setEditorShortcutKeys(editor)
+
+                // 注册保存按钮的点击事件
+                that.setBtnClick(editor)
+
+                return editor
+            },
+
+            // 设置 editor 的光标位置
+            setEditorFocus(editor, selection) {
+                if (!selection || !Object.keys(selection).length) {
+                    return
+                }
+                if (typeof selection.endLineNumber === "number" && typeof selection.endColumn === "number") {
+                    editor.setSelection(selection)
+                    editor.revealRangeInCenter(selection, 1)
+                } else {
+                    const position = {
+                        lineNumber: selection.startLineNumber,
+                        column: selection.startColumn,
+                    }
+                    editor.setPosition(position)
+                    editor.revealPositionInCenter(position, 1)
+                }
+                editor.focus()
+            },
+
+            // 注册 editor 快捷键
+            setEditorShortcutKeys(editor) {
+                document.onkeydown = (e) => {
+                    const keyCode = e.keyCode || e.which || e.charCode,
+                        ctrlKey = e.ctrlKey || e.metaKey
+                    if (ctrlKey && keyCode === 83) { // Ctrl + S
+                        if (this.vdata.readonly || this.vdata.loading) { // 如果没有加载完禁止保存提交，防止被覆盖
+                            return
+                        }
+                        this.vdata.loading = true
+                        const content = editor.getValue(),
+                            compiled = editor.getModel().getLanguageId() !== "typescript" ? "" : this.compile(content, this.input.name)
+                        this.submit(content, compiled).finally(() => {
+                            this.vdata.loading = false
+                        })
+                        return false
+                    }
+                }
+            },
+
+            // 注册保存按钮的图标状态和点击事件
+            setBtnClick(editor) {
+                const b = document.querySelector("#btn"),
+                    [u, s] = b.children
+                // 绑定 vdata 属性 readonly 到按钮状态图标的绑定
+                this.vdata.$bind("readonly", function (readonly) {
+                    [u.style.display, s.style.display] = ["", "none"].sort((a, b) => a.localeCompare(b) - 1 - !readonly)
+                })
+                // 注册按钮点击事件
+                b.onclick = () => {
+                    if (this.vdata.readonly) { // 已锁定
+                        // 解锁
+                        this.vdata.readonly = false
+                        editor.updateOptions({ readOnly: false, })
+                        return
+                    }
+                    document.onkeydown({ ctrlKey: true, keyCode: 83, }) // 触发保存事件
+                }
+            },
+
+            // 编译
+            compile(src, name = "noname") {
+                return ts.transpileModule(src, {
+                    compilerOptions: {
+                        module: ts.ModuleKind.CommonJS,
+                        inlineSourceMap: true, // 使源映射文件（即 *.js.map 文件）在生成的 js 文件中内联写入：源映射内容会以 `//#soureMappingURL=` 开头，按 base64 格式追加写入
+                        inlineSources: true, // 指定进一步将 ts 文件的内容也包含到输出文件中
+                        removeComments: true, // 移除注释
+                        downlevelIteration: true, // 当 target 为 ES5 或 ES3 时，为 for-of、spread 和 destructuring 中的迭代器提供完全支持
+                        target: ts.ScriptTarget.ES5, // 指定编译目标 ES5 版本（ES2015 及以上版本的部分语法 goja 不兼容）
+                    },
+                    fileName: name + ".ts",
+                })?.outputText
+            },
+
+            // 提交
+            submit(content, compiled, version = this.vdata.version) {
+                return fetch("source", {
+                    method: "PUT",
+                    body: JSON.stringify({
+                        name: this.input.name,
+                        type: this.input.type,
+                        content,
+                        compiled,
+                        ...(version && {
+                            last_modified_date: version,
+                        }),
+                    }),
+                }).then(r => r.json()).then(r => {
+                    if (r.code === "0") {
+                        // 更新版本号
+                        this.vdata.version = r.data.last_modified_date
+                        this.alert("Saved successfully", "success")
+                        // 如果是 module 类型，则发送广播消息，通知其它页面更新依赖
+                        this.broadcaster && this.input.type === "module" && this.broadcaster.postMessage({
+                            action: "update",
+                            name: this.input.name,
+                            type: this.input.type,
+                        })
+                        return
+                    }
+                    if (r.message === "source version conflict") {
+                        return swal("Source version is conflict, continue to submit?", {
+                            buttons: {
+                                cancel: true,
+                                submit: true,
+                            },
+                        }).then(value => value && this.submit(content, compiled, ""))
+                    }
+                    throw new Error(r.message)
+                }).catch(e => {
+                    this.alert(e.message, "error")
+                })
+            },
+
+            // 提示
+            alert(message, level = "warning") {
+                swal(message, "", level)
+                if (level === "error") { // 如果是 error 则抛出异常并停止当前程序运行
+                    throw message
+                }
+            },
+
+            // 弹框提示
+            dialog(fn) {
+                const e = document.querySelector("#dialog"),
+                    c = e.querySelector("div > div:nth-child(2)")
+                c.innerText = ""
+                c.scrollTo(0, 0) // 滚动条复位
+                e.style.visibility = "visible"
+                fn((rows) => {
+                    c.innerText = rows.map(([level, time, ...data]) => "[" + time.replace(/^.+T|\+.+$/g, "").padEnd(12, "0") + "] " + data.join(" ")).join("\n") || ""
+                })
+            },
+
+            // 初始化
+            async mount() {
+                if (!this.input.name) {
+                    this.alert("name is required", "error")
+                    return
+                }
+
+                // 根据 name 和 type 查询 source
+                const source = (await fetch(`source?name=${this.input.name}&type=${this.input.type}&content`).then(r => r.json()).then(r => r.data.sources) || []).pop()
+                if (!source) {
+                    this.alert(`${this.input.type} "${this.input.name}" does not existed`, "error")
+                    return
+                }
+
+                // 更新版本号
+                this.vdata.version = source.last_modified_date
+
+                // 渲染页面标题
+                document.title = this.input.name + " - " + this.input.type
+
+                const editor = this.render(source.lang)
+                if (!!source.content || !this.input.example) {
+                    editor.setValue(source.content || "")
+                    this.setEditorFocus(editor, this.input.selection) // 光标跳转至指定代码位置
+                    this.vdata.readonly = true
+                    editor.updateOptions({ readOnly: true, })
+                }
+                this.vdata.loading = false
+                document.querySelector("#btn").style.removeProperty("display")
+            },
+        }))
+    </script>
+</body>
+
+</html>
