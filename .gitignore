@@ -1,0 +1,12 @@
+cube
+cubemin
+files
+.idea
+*.exe
+*.db
+*.log
+*.key
+*.crt
+*.srl
+*.csr
+web/libs
