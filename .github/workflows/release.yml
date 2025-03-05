@@ -61,15 +61,15 @@ jobs:
           upx -9 -q -o cube .out
       - name: Package
         run: |
-          tar -zcvf cube-latest-linux-amd64.tar.gz cube docs README.md LICENSE
+          tar -zcvf cube-latest-linux-amd64-nocdn.tar.gz cube docs README.md LICENSE
       - name: Checksum
         run: |
-          md5sum cube-latest-linux-amd64.tar.gz | cut -d ' ' -f 1 > cube-latest-linux-amd64.tar.gz.md5
+          md5sum cube-latest-linux-amd64-nocdn.tar.gz | cut -d ' ' -f 1 > cube-latest-linux-amd64-nocdn.tar.gz.md5
       - name: Upload
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: cube-latest-linux-amd64.tar.gz*
+          file: cube-latest-linux-amd64-nocdn.tar.gz*
           tag: latest
           release_name: latest
           overwrite: true
