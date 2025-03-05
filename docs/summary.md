@@ -39,3 +39,5 @@
 - [Pay online using Alipay](examples/alipay.md)
 
 - [Dynamic views](examples/dynamic-views.md)
+
+- [Create a webchat with peerjs](examples/webrtc.md)
