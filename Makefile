@@ -19,19 +19,19 @@ bench: # 执行（基准）单元测试用例
 	@go test -v -run=^$ -benchmem -bench=. ./... | grep -v 'no test files'
 
 # 编译
-build: clean # 默认使用 CDN 资源并且不使用 UPX 压缩，即 make build ENABLE_CDN=1 ENABLE_UPX=0
+build: clean # 默认使用 CDN 资源并且不使用 UPX 压缩，即 make build CDN=1 UPX=0
 	@
 	# 是否使用 CDN 资源
-	if [ "$(ENABLE_CDN)" = "0" ]; then # 构建一个不依赖于 CDN 的版本，依赖的 js、css 等库文件将下载至本地 web/libs 目录下
+	if [ "$(CDN)" = "0" ]; then # 构建一个不依赖于 CDN 的版本，依赖的 js、css 等库文件将下载至本地 web/libs 目录下
 		# 下载除 monaco-editor 外所有 css、js 资源文件
-		grep -hor "https://cdnjs.cloudflare.com/ajax/libs/[^\"'\'''\'']*" ./web | grep -v "monaco-editor" | sort | uniq | while read uri
+		grep -hor "https://cdn.bootcdn.net/ajax/libs/[^\"'\'''\'']*" ./web | grep -v "monaco-editor" | sort | uniq | while read uri
 		do
-			name=$${uri#https://cdnjs.cloudflare.com/ajax/}
+			name=$${uri#https://cdn.bootcdn.net/ajax/}
 			if [ -f "web/$$name" ]; then
 				continue
 			fi
 			mkdir -p "web/$$(dirname $$name)"
-			curl -sk --compressed "https://cdnjs.cloudflare.com/ajax/$$name" -o "web/$$name"
+			curl -sk --compressed "https://cdn.bootcdn.net/ajax/$$name" -o "web/$$name"
 		done
 		# 下载 monaco-editor 资源文件
 		export LANG=C.UTF-8
@@ -43,16 +43,16 @@ build: clean # 默认使用 CDN 资源并且不使用 UPX 压缩，即 make buil
 			rm monaco-editor-$$version.tgz
 		fi
 		# 替换 html 中的 cdn 地址
-		sed -i 's#https://cdnjs.cloudflare.com/ajax/libs#/libs#g' web/*.html
+		sed -i 's#https://cdn.bootcdn.net/ajax/libs#/libs#g' web/*.html
 		# 编译（删除符号、调试信息）
 		go build -ldflags "-s -w" .
 		# 还原 html 中的 cdn 地址
-		sed -i 's#/libs#https://cdnjs.cloudflare.com/ajax/libs#g' web/*.html
+		sed -i 's#/libs#https://cdn.bootcdn.net/ajax/libs#g' web/*.html
 	else
 		go build -ldflags "-s -w" .
 	fi
 	# 是否使用 UPX 压缩
-	if [ "$(ENABLE_UPX)" = "1" ]; then
+	if [ "$(UPX)" = "1" ]; then
 		if [ "$(shell uname)" = "Linux" ]; then
 			upx -9 -q -o cubemin cube
 		else
