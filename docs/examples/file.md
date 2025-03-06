@@ -17,7 +17,7 @@
         private static readonly HttpRangeSliceSize = 1024 * 1024
 
         public run(ctx: ServiceContext) {
-            return this.read(ctx.getPathVariables().name.split("!/"), ctx, undefined)
+            return this.read(decodeURIComponent(ctx.getPathVariables().name).split("!/"), ctx, undefined)
         }
 
         private read([name, ...subnames]: string[], ctx: ServiceContext, zipFiles: ZipEntry[]) {
