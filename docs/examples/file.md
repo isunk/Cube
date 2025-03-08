@@ -30,8 +30,7 @@
                 magic = headers.map(i => i.toString(16).padStart(2, '0')).join("").toUpperCase(),
                 fileType = FileReader.FileTypes[
                     Object.keys(FileReader.FileTypes)
-                        .filter(n => new RegExp("^" + n.padEnd(headers.length * 2, '?').replace(/\?+/g, s => `[A-F0-9]{${s.length}}`) + "$").test(magic))
-                        .pop()
+                        .find(n => new RegExp("^" + n.padEnd(headers.length * 2, '?').replace(/\?+/g, s => `[A-F0-9]{${s.length}}`) + "$").test(magic))
                 ]
 
             if (!!~["jpeg", "png"].indexOf(fileType)) {
@@ -56,7 +55,7 @@
             if (zipEntries === undefined) {
                 return filec.readRange(name, 0, size)
             }
-            return zipEntries.filter(i => i.name === name).pop()?.getData()?.slice(0, size)
+            return zipEntries.find(i => i.name === name)?.getData()?.slice(0, size)
         }
 
         private toDir(name: string, zipFiles: ZipEntry[]) {
@@ -68,13 +67,13 @@
 
         private toImage(name: string, ctx: ServiceContext, zipFiles: ZipEntry[]) {
             const width = Number(ctx.getURL().params.width?.pop() || 1280)
-            return imagec.parse(zipFiles === undefined ? filec.read(name) : zipFiles.filter(i => i.name === name).pop()?.getData())
+            return imagec.parse(zipFiles === undefined ? filec.read(name) : zipFiles.find(i => i.name === name)?.getData())
                 .resize(width)
                 .toJPG()
         }
 
         private toFile(name: string, zipFiles: ZipEntry[]) {
-            return zipFiles === undefined ? filec.read(name) : zipFiles.filter(i => i.name === name).pop()?.getData()
+            return zipFiles === undefined ? filec.read(name) : zipFiles.find(i => i.name === name)?.getData()
         }
 
         private toFileWithHttpRange(name: string, ctx: ServiceContext, fileSize: number, contentType: string) {

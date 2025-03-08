@@ -414,7 +414,7 @@ export abstract class GraphQL {
                     if ("column" in property) { // 如果是列属性，跳过不处理
                         return false;
                     }
-                    if ((<ColumnSchema>property.properties[Object.keys(property.properties).filter(sn => (<ColumnSchema>property.properties[sn]).column === property.joined.column).pop() || ""])?.isPrimaryKey !== true) {
+                    if ((<ColumnSchema>property.properties[Object.keys(property.properties).find(sn => (<ColumnSchema>property.properties[sn]).column === property.joined.column) || ""])?.isPrimaryKey !== true) {
                         return false;
                     }
                     if (property.joined.isCollection !== false) { // 前置子请求必须为非集合元素
@@ -491,7 +491,7 @@ export abstract class GraphQL {
             this.doMutateRequests(subrequests0, model.properties);
             for (const subname in subrequests0) {
                 const submodel = <SubTableSchema>model.properties[subname],
-                    primaryKey = Object.keys(submodel.properties).filter(i => (submodel.properties[i] as ColumnSchema).column === submodel.joined.column).pop() || "";
+                    primaryKey = Object.keys(submodel.properties).find(i => (submodel.properties[i] as ColumnSchema).column === submodel.joined.column) || "";
                 // 遍历对象，将子对象以及子对象主键值回写至对象中
                 for (const { record, dataset } of data) {
                     const subrecord = <Record>record[subname];
@@ -541,7 +541,7 @@ export abstract class GraphQL {
         }
 
         // 找出当前模型的主键
-        const primaryKey = Object.keys(model.properties).filter(n => (model.properties[n] as ColumnSchema).isPrimaryKey === true).pop();
+        const primaryKey = Object.keys(model.properties).find(n => (model.properties[n] as ColumnSchema).isPrimaryKey === true);
         if (!primaryKey) {
             throw new Error(`primary key of ${name} in schema does not exist`);
         }

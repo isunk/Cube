@@ -181,7 +181,7 @@ export class BusinessProcessManagement {
         this.db.exec("update process_activity_instance set end_time = ? where id = ?", new Date().getTime(), taskId);
 
         // 查找并执行下一步活动
-        const currentActivity = <Task>this.process.activities.filter(i => i.id === processActivityInstance.activity_id).pop();
+        const currentActivity = <Task>this.process.activities.find(i => i.id === processActivityInstance.activity_id);
 
         this.createActivityInstance(processInstance.id,
             currentActivity.next,
@@ -219,7 +219,7 @@ export class BusinessProcessManagement {
     }
 
     private createActivityInstance(processInstanceId: string, activityId: string, variables: object) {
-        const activity = this.process.activities.filter(a => a.id === activityId).pop();
+        const activity = this.process.activities.find(a => a.id === activityId);
         if (activity == null) {
             throw new Error("activity does not exist: " + activityId);
         }
@@ -421,7 +421,7 @@ export default function (ctx: ServiceContext): ServiceResponse {
     `)
 
     return new ServiceResponse(200, { "Content-Type": "text/html; charset=utf-8" }, processActivityInstances.map(i => {
-        return `${new Date(i.start_time).toString()} - ${new Date(i.end_time).toString()}: ${i.assignee} ${process.activities.filter(a => a.id === i.activity_id).pop()["name"]}`
+        return `${new Date(i.start_time).toString()} - ${new Date(i.end_time).toString()}: ${i.assignee} ${process.activities.find(a => a.id === i.activity_id)["name"]}`
     }).join("<br/>"))
 }
 ```

@@ -10,23 +10,17 @@
         <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no">
         <style>
             body {
-                display: flex;
-                justify-content: center;
-                align-items: center;
+                display: flex; justify-content: center; align-items: center;
             }
             .container {
-                width: 720px;
-                height: 600px;
+                width: 720px; height: 600px;
                 padding: 0 12px;
-                border-radius: 6px;
-                box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
-                display: flex;
-                flex-direction: column;
+                border-radius: 6px; box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+                display: flex; flex-direction: column;
                 background-color: #EDEDED;
             }
             .container > .title {
-                display: flex;
-                justify-content: center;
+                display: flex; justify-content: center;
                 color: black;
                 font-weight: 600;
                 padding: 12px 0 8px 0;
@@ -37,9 +31,7 @@
             }
             .container > .messages {
                 padding: 4px 0;
-                flex-grow: 1;
-                display: flex;
-                flex-direction: column;
+                display: flex; flex-direction: column; flex-grow: 1;
                 overflow-y: auto;
             }
             .container > .messages::-webkit-scrollbar {
@@ -63,8 +55,7 @@
                 white-space: pre-wrap;
             }
             .container > .messages > div.image > img {
-                max-height: 96px;
-                min-width: 96px;
+                max-height: 96px; min-width: 96px;
                 border-radius: 8px;
                 object-fit: contain;
             }
@@ -105,6 +96,14 @@
             .container > .sender > div {
                 width: 28px; height: 28px;
                 padding: 2px;
+            }
+            .masking {
+                position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+                background-color: #22222290;
+                display: flex; justify-content: center; align-items: center;
+            }
+            .masking img {
+                max-height: 100vh; max-width: 100vw;
             }
             @media screen and (max-width: 768px) {
                 body {
@@ -151,7 +150,7 @@
                     <div :class="{ 'sent': msg.sent, 'text': true }" v-if="msg.type === 'text'">
                         {{ msg.value }}
                     </div>
-                    <div :class="{ 'sent': msg.sent, 'image': true }" v-else-if="/^image/.test(msg.type)">
+                    <div :class="{ 'sent': msg.sent, 'image': true }" v-else-if="/^image/.test(msg.type)" @click="preview(msg.value)">
                         <img :src="msg.value" />
                     </div>
                     <div :class="{ 'sent': msg.sent, 'file': true }" v-else-if="msg.meta">
@@ -170,6 +169,9 @@
                     <input type="file" style="display: none;" ref="file" @change="upload" />
                 </div>
             </div>
+            <div v-if="masking.visiable" class="masking" @click="() => masking.visiable = false">
+                <img :src="masking.img" />
+            </div>
         </div>
         <script src="https://cdnjs.cloudflare.com/ajax/libs/vue/3.5.13/vue.global.min.js"></script>
         <script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js"></script>
@@ -187,6 +189,10 @@
                             type: "text",
                             value: 'Please input peer ID to connect...',
                         }],
+                        masking: {
+                            img: undefined,
+                            visiable: false,
+                        },
                     }
                 },
                 watch: {
@@ -262,6 +268,10 @@
                         this.$nextTick(() => {
                             this.$refs.messages.scrollTop = this.$refs.messages.scrollHeight
                         })
+                    },
+                    preview(img) {
+                        this.masking.visiable = true
+                        this.masking.img = img
                     },
                 },
                 mounted() {

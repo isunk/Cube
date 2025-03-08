@@ -40,8 +40,7 @@
                     controlURL: i.findOne("controlurl").innerText(),
                 }
             })
-            .filter(i => i.serviceType === "urn:schemas-upnp-org:service:AVTransport:1")
-            .pop()
+            .find(i => i.serviceType === "urn:schemas-upnp-org:service:AVTransport:1")
         if (!service) {
             throw new Error("service not found: AVTransport")
         }

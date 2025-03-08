@@ -128,7 +128,7 @@ export class WebFlow {
             throw new Error("The operation is not allowed for the start state or end state.")
         }
 
-        const transition = state.transitions.filter(t => t.on === event).pop();
+        const transition = state.transitions.find(t => t.on === event);
         if (!transition) {
             throw new Error(`The event "${event}" is invalid for the current state "${id}", the expected value is "${state.transitions.map(t => t.on).join("\", \"")}".`)
         }
