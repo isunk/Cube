@@ -161,3 +161,30 @@ jobs:
           overwrite: true
           file_glob: true
           body: ""
+  build-docker:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+      - name: Set up Docker Buildx
+        uses: actions/setup-buildx-action@v3
+      - name: Build
+        run: |
+          docker build -t cube .
+          docker save cube:latest > cube.tar
+      - name: Package
+        run: |
+          tar -zcvf cube-latest-docker.tar.gz cube.tar
+      - name: Checksum
+        run: |
+          md5sum cube-latest-docker.tar.gz | cut -d ' ' -f 1 > cube-latest-docker.tar.gz.md5
+      - name: Upload
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: cube-latest-docker.tar.gz*
+          tag: latest
+          release_name: latest
+          overwrite: true
+          file_glob: true
+          body: ""
