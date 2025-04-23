@@ -6,7 +6,7 @@ COPY . .
 RUN sed -i '/go RunMonitor()/d' ./main.go
 RUN make build CDN=0
 
-FROM alpine-glibc
+FROM frolvlad/alpine-glibc:latest
 WORKDIR /home
 COPY --from=builder /app/cube .
 COPY ./docs ./docs
