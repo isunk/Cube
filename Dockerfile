@@ -1,4 +1,4 @@
-FROM golang:1.23
+FROM golang:1.23 AS builder
 WORKDIR /app
 COPY . .
 # RUN go env -w GO111MODULE=on
@@ -8,6 +8,6 @@ RUN make build CDN=0
 
 FROM alpine
 WORKDIR /home
-COPY --from=0 cube .
-COPY --from=0 docs .
+COPY --from=builder /app/cube .
+COPY docs .
 CMD ["./cube"]
