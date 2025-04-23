@@ -167,7 +167,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v3
       - name: Set up Docker Buildx
-        uses: actions/setup-buildx-action@v1
+        uses: actions/setup-buildx-action@v4
       - name: Build
         run: |
           docker build -t cube .
