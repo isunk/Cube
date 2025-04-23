@@ -11,4 +11,4 @@ WORKDIR /app
 COPY --from=builder /app/cube .
 COPY ./docs ./docs
 ENTRYPOINT ["./cube"]
-CMD ["-p 8090", "-n 256"]
+CMD ["-p", "8090", "-n", "256"]
