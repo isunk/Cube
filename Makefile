@@ -46,12 +46,12 @@ build: clean # 默认使用 CDN 资源并且不使用 UPX 压缩，即 make buil
 		sed -i 's#https://cdn.bootcdn.net/ajax/libs#/libs#g' web/*.html
 		sed -i "s#\"/libs/monaco-editor/$$version/min/vs\"#window.location.origin + \"/libs/monaco-editor/$$version/min/vs\"#g" web/editor.html # 由于这里的 URL 需要在 Service Worker 中动态获取，因此需要补充完整的域名
 		# 编译（删除符号、调试信息）
-		go build -ldflags "-s -w" .
+		go build -ldflags "-s -w" -tags netgo .
 		# 还原 html 中的 cdn 地址
 		sed -i "s#window.location.origin + \"/libs/monaco-editor/$$version/min/vs\"#\"/libs/monaco-editor/$$version/min/vs\"#g" web/editor.html
 		sed -i 's#/libs#https://cdn.bootcdn.net/ajax/libs#g' web/*.html
 	else
-		go build -ldflags "-s -w" .
+		go build -ldflags "-s -w" -tags netgo .
 	fi
 	# 是否使用 UPX 压缩
 	if [ "$(UPX)" = "1" ]; then

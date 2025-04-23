@@ -9,5 +9,5 @@ RUN make build CDN=0
 FROM alpine
 WORKDIR /home
 COPY --from=builder /app/cube .
-COPY docs .
+COPY ./docs ./docs
 CMD ["./cube"]
