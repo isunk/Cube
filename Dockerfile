@@ -6,7 +6,7 @@ RUN make build CDN=0
 
 FROM frolvlad/alpine-glibc:latest
 WORKDIR /app
-RUN mkdir -p /data/files && touch /data/files/0 && ln -s /data/cube.db cube.db && ln -s /data/files files
+RUN mkdir -p /data && ln -s /data/cube.db ./cube.db && ln -s /data ./files
 COPY --from=builder /app/cube .
 COPY ./docs ./docs
 ENTRYPOINT ["./cube"]
