@@ -188,3 +188,12 @@ jobs:
           overwrite: true
           file_glob: true
           body: ""
+      - name: Push to Docker Hub
+        env:
+          DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+          DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+        run: |
+          docker login --username $DOCKER_USERNAME --password $DOCKER_PASSWORD
+          echo "VERSION=$(date +%Y%m%d%H%M)" >> $GITHUB_ENV
+          docker tag cube:latest cube:$VERSION
+          docker push cube:$VERSION
