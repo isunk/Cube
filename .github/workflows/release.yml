@@ -194,5 +194,5 @@ jobs:
           DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
         run: |
           docker login --username $DOCKER_USERNAME --password $DOCKER_PASSWORD
-          docker tag cube $DOCKER_USERNAME/cube:latest
-          docker push $DOCKER_USERNAME/cube:latest
+          docker tag cube 904243852/cube:latest
+          docker push 904243852/cube:latest
