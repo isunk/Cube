@@ -112,3 +112,12 @@ func (f *FileClient) List(name string) ([]string, error) {
 	}
 	return names, nil
 }
+
+func (f *FileClient) Remove(name string) error {
+	fp, err := f.getPath(name)
+	if err != nil {
+		return err
+	}
+
+	return os.RemoveAll(fp)
+}

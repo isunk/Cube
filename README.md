@@ -431,7 +431,7 @@ Here are some built-in methods and modules.
         ```typescript
         export default function (ctx: ServiceContext) {
             const file = ctx.getFile("file"),
-                hash = $native("crypto").md5(file.data).toString("hex")
+                hash = $native("crypto").createHash("md5").sum(file.data).toString("hex")
             console.info(hash)
         }
         ```

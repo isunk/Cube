@@ -142,6 +142,7 @@ declare function $native(name: "file"): {
         modTime(): string;
     };
     list(name: string): string[];
+    remove(name: string): void;
 }
 
 type HttpOptions = Partial<{
