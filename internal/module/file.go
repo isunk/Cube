@@ -119,5 +119,9 @@ func (f *FileClient) Remove(name string) error {
 		return err
 	}
 
+	if fp == "files" {
+		return nil
+	}
+
 	return os.RemoveAll(fp)
 }
