@@ -119,7 +119,14 @@ func (f *FileClient) Remove(name string) error {
 		return err
 	}
 
-	if fp == "files" {
+	if fp == "files" || strings.HasSuffix(name, "/") {
+		names, err := f.List(name)
+		if err != nil {
+			return err
+		}
+		for _, name := range names {
+			os.RemoveAll(path.Join([]string{fp, name}...))
+		}
 		return nil
 	}
 
