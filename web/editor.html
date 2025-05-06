@@ -134,10 +134,11 @@
             })(),
 
             // 渲染 Monaco Editor
-            render(lang) {
-                const that = this
+            render(sourceLanguage) {
+                const that = this,
+                    editorLanguage = { vue: "html" }[sourceLanguage] || sourceLanguage
 
-                if (lang === "typescript") {
+                if (editorLanguage === "typescript") {
                     // 初始化编辑器的编译选项
                     monaco.languages.typescript.typescriptDefaults.setCompilerOptions({
                         allowNonTsExtensions: true, // 允许文件名（如 createModel 中的 uri）可以不包含 ".ts" 拓展名（默认为 false，则文件名必须包含 ".ts" 拓展名，否则将出现异常："Could not find source file"）
@@ -197,9 +198,9 @@
 
                 // 创建 editor
                 const editor = monaco.editor.create(document.querySelector("#container"), {
-                    language: lang,
+                    language: editorLanguage,
                     theme: "vs-dark",
-                    model: monaco.editor.createModel(that.examples[that.input.type] || that.examples[lang] || "", lang, new monaco.Uri("noname")),
+                    model: monaco.editor.createModel(that.examples[that.input.type] || that.examples[sourceLanguage] || "", editorLanguage, new monaco.Uri("noname")),
                     options: {
                         selectOnLineNumbers: true,
                         roundedSelection: false,
@@ -232,7 +233,7 @@
                     }
                 })
 
-                if (lang === "typescript") {
+                if (editorLanguage === "typescript") {
                     // 注册弹窗关闭事件
                     document.querySelector("#dialog > div > div > button").onclick = function() {
                         this.parentNode.parentNode.parentNode.style.visibility = "hidden"
@@ -403,7 +404,7 @@
                 // 渲染页面标题
                 document.title = this.input.name + " - " + this.input.type
 
-                const editor = this.render({ vue: "html" }[source.lang] || source.lang)
+                const editor = this.render(source.lang)
                 if (!!source.content || !this.input.example) {
                     editor.setValue(source.content || "")
                     this.setEditorFocus(editor, this.input.selection) // 光标跳转至指定代码位置
