@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/fs"
 	"net/http"
+	"strings"
 
 	"cube/internal/builtin"
 	"cube/internal/config"
@@ -24,7 +25,14 @@ func InitHandle(web *embed.FS) {
 	http.HandleFunc("/document/", authenticate(HandleDocument))
 
 	fileList, _ := fs.Sub(web, "web")
-	http.Handle("/", http.FileServer(http.FS(fileList)))
+	fileServer := http.FileServer(http.FS(fileList))
+	http.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/libs/") {
+			// 对 "/libs/" 路径下的静态资源设置 365 天的缓存
+			w.Header().Set("Cache-Control", "public, max-age=31536000")
+		}
+		fileServer.ServeHTTP(w, r)
+	}))
 }
 
 func Success(w http.ResponseWriter, data interface{}) {
