@@ -2,7 +2,7 @@
 
 1. Create a controller with url `/service/api/mac/cms` and method `Get`.
     ```typescript
-    //?name=MacCmsApi&type=controller&url=api/mac/cms&method=get
+    //?name=MacCmsApi&type=controller&url=api/mac/cms&method=GET
     export const macapi = new class MacCmsApi {
         private endpoint: string
 
@@ -53,7 +53,7 @@
 
 2. Create a resource with url `/resource/mac/cms`.
     ```html
-    //?name=MacCmsView&type=resource&url=mac/cms
+    //?name=MacCmsView&type=resource&lang=html&url=mac/cms
     <!DOCTYPE html>
     <html>
 
