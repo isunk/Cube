@@ -41,3 +41,5 @@
 - [Dynamic views](examples/dynamic-views.md)
 
 - [Create a webchat with peerjs](examples/webrtc.md)
+
+- [Video on Demand Website Based on MAC CMS](examples/mac-cms.md)

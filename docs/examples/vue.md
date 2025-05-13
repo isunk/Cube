@@ -135,3 +135,95 @@
     ```
 
 2. You can preview at `http://127.0.0.1:8090/resource/app/vue3`
+
+3. You can create a http-vue-loader by creating a resource with lang `javascript` and url `/resource/vue-loader.js`.
+    ```javascript
+    //?name=MyVueLoader&type=resource&lang=javascript&url=vue-loader.js
+    window.load = (() => {
+        const globalStyle = document.createElement("style")
+        document.head.appendChild(globalStyle)
+
+        let scopedId = 0
+
+        const require = (url) => Vue.defineAsyncComponent(() => fetch(url)
+            .then(res => {
+                if (!res.ok) {
+                    throw Object.assign(new Error(res.statusText + " " + url), { res });
+                }
+                return res.text()
+            })
+            .then(innerHTML => {
+                const doc = document.implementation.createHTMLDocument("")
+                doc.body.innerHTML = innerHTML
+                
+                const sfc = {}
+
+                for (let e = doc.body.firstChild; e; e = e.nextSibling) {
+                    switch (e.nodeName) {
+                        case "TEMPLATE":
+                            sfc.template = e
+                            break
+                        case "SCRIPT":
+                            sfc.script = e
+                            sfc.script.module = {
+                                exports: {}
+                            }
+                            break
+                        case "STYLE":
+                            sfc.styles = e
+                            break
+                    }
+                }
+
+                // script
+                Function("exports", "require", "module", sfc.script.textContent).call(sfc.script.module.exports, sfc.script.module.exports, require.bind(sfc.script), sfc.script.module)
+
+                // style
+                if (sfc.styles) {
+                    if (sfc.styles.attributes.scoped) {
+                        const scopedName = "data-v-" + (++scopedId)
+
+                        const scopedStyle = document.createElement("style")
+                        scopedStyle.setAttribute("id", "v-style-" + scopedId)
+                        document.head.appendChild(scopedStyle)
+
+                        for (const rule of sfc.styles.sheet.cssRules) {
+                            if (rule.type !== 1) {
+                                continue
+                            }
+                            const scopedSelectors = []
+                            rule.selectorText.split(/\s*,\s*/).forEach(selector => {
+                                scopedSelectors.push(scopedName + " " + selector)
+                                const segments = selector.match(/([^ :]+)(.+)?/)
+                                scopedSelectors.push(segments[1] + "[" + scopedName + "]" + (segments[2] || ""))
+                            })
+                            scopedStyle.sheet.insertRule(scopedSelectors.join(",") + rule.cssText.substr(rule.selectorText.length), scopedStyle.sheet.cssRules.length)
+                        }
+                        const setScopedName = elements => {
+                            for (const e of elements) {
+                                e.setAttribute(scopedName, "")
+                                setScopedName(e.children)
+                            }
+                        }
+                        setScopedName(sfc.template.content.children)
+                    } else {
+                        for (const rule of sfc.styles.sheet.cssRules) {
+                            if (rule.type !== 1) {
+                                continue
+                            }
+                            globalStyle.sheet.insertRule(rule.cssText, globalStyle.sheet.cssRules.length)
+                        }
+                    }
+                }
+                
+                // template
+                if (sfc.template) {
+                    sfc.script.module.exports.template = sfc.template.innerHTML
+                }
+
+                return sfc.script.module.exports
+            }))
+
+        return require
+    })()
+    ```
