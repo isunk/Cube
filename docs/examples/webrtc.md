@@ -4,10 +4,10 @@
     ```html
     //?name=Webchat&type=resource&lang=html&url=webchat
     <html>
-    
+
     <head>
-        <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no">
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no" />
         <style>
             body {
                 display: flex; justify-content: center; align-items: center;
@@ -25,9 +25,10 @@
                 font-weight: 600;
                 padding: 12px 0 8px 0;
                 border-bottom: solid 0.1px #E9E9E9;
+                color: #CCC;
             }
             .container > .title > .success {
-                color: lightgreen;
+                color: #000;
             }
             .container > .messages {
                 padding: 4px 0;
@@ -139,7 +140,7 @@
             }
         </style>
     </head>
-    
+
     <body>
         <div id="app" class="container" v-cloak>
             <div class="title">
@@ -287,6 +288,6 @@
             }).mount("#app")
         </script>
     </body>
-    
+
     </html>
     ```
