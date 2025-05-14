@@ -43,13 +43,8 @@
     }(
         "https://api.xinlangapi.com/xinlangapi.php", // 新浪资源
         // "https://api.apibdzy.com/api.php", // 百度云资源
-        // "https://api.ukuapi.com/api.php", // U 酷资源（百度云资源的子站）
-        // "https://www.qilinzyz.com/api.php", // 麒麟资源
-        // "http://api.fqzy.cc/api.php", // 番茄资源
-        // "https://www.hongniuzy1.com/inc/api.php", // 红牛资源
         // "https://api.wujinapi.com/api.php", // 无尽资源
-        // "http://www.kuaibozy.com/api.php", // kuaibozy资源
-        // "http://zy.yilans.net:8090/api.php", // 8090 资源
+        // "https://www.hongniuzy2.com/api.php", // 红牛
     )
 
     export default (app => app.run.bind(app))(new class {
@@ -145,10 +140,10 @@
     <body v-clock>
         <div class="search">
             <input type="text" v-model="keyword"></input>
-            <button @click="fetch(true)">Search</button>
+            <button @click="search(typeId, keyword, 1)">Search</button>
         </div>
         <div class="types">
-            <a v-for="type in types" @click="() => { typeId = type.id; pageIndex = 1; fetch(true); }" :class="type.id === typeId ? 'active' : ''">
+            <a v-for="type in types" @click="type.id !== typeId && search(type.id, keyword, 1)" :class="type.id === typeId ? 'active' : ''">
                 {{ type.name }}
             </a>
         </div>
@@ -157,7 +152,7 @@
                 <img :src="media.pic" :title="media.desc" />
                 <p :title="media.name">{{ media.name }}</p>
             </div>
-            <div ref="loading" class="loading" v-show="fetching || !ending"></div>
+            <div ref="loading" class="loading" v-show="!ending"></div>
         </div>
         <script src="https://unpkg.com/vue@3.4.6/dist/vue.global.prod.js"></script>
         <script>
@@ -166,43 +161,38 @@
                     return {
                         observer: undefined,
                         types: [], medias: [],
-                        fetching: false, ending: false,
                         pageIndex: 0, typeId: "", keyword: "",
                     }
                 },
                 methods: {
-                    fetch(reset = false) {
-                        if (this.fetching) {
-                            return
-                        }
-                        if (reset) {
-                            this.pageIndex = 0
+                    search(typeId, keyword, pageIndex) {
+                        this.$refs.loading.innerText = "Loading..."
+                        this.typeId = typeId
+                        if (pageIndex === 1) {
                             this.medias = []
-                            this.$refs.loading.innerText = "Loading..."
                         }
-                        this.fetching = true
-                        fetch(`/service/api/mac/cms?t=${this.typeId}&ac=videolist&pg=${this.pageIndex + 1}&wd=${this.keyword}`).then(i => i.json()).then(data => {
-                            this.pageIndex = Number(data.page)
-                            this.medias.push(...data.list.map(i => {
-                                return {
-                                    name: i.vod_name,
-                                    desc: i.vod_content,
-                                    pic: i.vod_pic,
-                                    uris: i.vod_play_url.split(/(?:#|\$\$\$)/).map(i => i.split("$")),
+                        fetch(`/service/api/mac/cms?ac=videolist&t=${typeId}&wd=${keyword}&pg=${pageIndex}`)
+                            .then(i => i.json())
+                            .then(data => {
+                                this.pageIndex = Number(data.page)
+                                this.medias.push(...data.list.map(i => {
+                                    return {
+                                        name: i.vod_name,
+                                        desc: i.vod_content,
+                                        pic: i.vod_pic,
+                                        uris: i.vod_play_url.split(/(?:#|\$\$\$)/).map(i => i.split("$")),
+                                    }
+                                }))
+                                if (this.pageIndex < data.pagecount) {
+                                    // this.$nextTick(() => this.observer.observe(document.querySelector(".medias > .media:last-child"))) // 监听最后一个元素
+                                    this.observer.observe(this.$refs.loading) // 监听底部 loading 元素
+                                    this.$refs.loading.style.display = "block"
+                                    return
                                 }
-                            }))
-                            if (this.pageIndex < data.pagecount) {
-                                // this.$nextTick(() => this.observer.observe(document.querySelector(".medias > .media:last-child"))) // 监听最后一个元素
-                                this.observer.observe(this.$refs.loading) // 监听底部 loading 元素
-                                this.ending = false
-                                return
-                            }
-                            this.ending = true
-                        }).catch(e => {
-                            this.$refs.loading.innerText = e.message
-                        }).finally(() => {
-                            this.fetching = false
-                        })
+                                this.$refs.loading.style.display = "none"
+                            }).catch(e => {
+                                this.$refs.loading.innerText = e.message
+                            })
                     },
                     play(media) {
                         window.open(media.uris[0][1])
@@ -214,20 +204,23 @@
                         const entry = entries[0]
                         if(entry.isIntersecting) { // 如果已进入视图，停止监听，并且生成新的元素
                             this.unobserve(entry.target)
-                            that.fetch(false)
+                            that.search(that.typeId, that.keyword, that.pageIndex + 1)
                         }
                     })
-                    fetch("/service/api/mac/cms").then(i => i.json()).then(data => {
-                        that.types = data.class.map(i => {
-                            return {
-                                id: i.type_id,
-                                name: i.type_name,
-                            }
+                    fetch("/service/api/mac/cms")
+                        .then(i => i.json())
+                        .then(data => {
+                            that.types = data.class.map(i => {
+                                return {
+                                    id: i.type_id,
+                                    name: i.type_name,
+                                }
+                            })
+                            that.search(that.types[0].id, that.keyword, 1)
                         })
-                        that.typeId = that.types[0].id
-                        that.fetch(true)
-                    })
-                    
+                        .catch(e => {
+                            this.$refs.loading.innerText = e.message
+                        })
                 },
             })
             app.mount(document.body)
