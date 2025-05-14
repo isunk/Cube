@@ -2,21 +2,21 @@
 
 1. Create a controller with url `/service/api/mac/cms` and method `Get`.
     ```typescript
-    //?name=MacCmsApi&type=controller&url=api/mac/cms&method=GET
-    export const macapi = new class MacCmsApi {
+    //?name=MacCms8Api&type=controller&url=api/mac/cms&method=GET&tag=maccms
+    export const api = new class MacCms8Api {
         private endpoint: string
 
-        private type: string
+        private table: "vod" | "art" | "actor" | "role" | "website"
 
         /**
-        * 苹果 CMS API
+        * 苹果 CMS 8 API
         * 
         * @params endpoint 资源地址
         * @params type 资源类型：vod（视频）、art（文章）、actor（演员）、role（角色）、website（网站）
         */
-        constructor(endpoint: string = "https://api.xinlangapi.com/xinlangapi.php", type: "vod" | "art" | "actor" | "role" | "website" = "vod") {
+        constructor(endpoint: string = "https://api.xinlangapi.com/xinlangapi.php") {
             this.endpoint = endpoint
-            this.type = type
+            this.table = "vod"
         }
 
         /**
@@ -31,7 +31,7 @@
         * @params at 输出格式：xml、json（默认）
         */
         public query(wd?: string, t?: string, pg?: number, h?: number, ids?: string[], ac?: "videolist" | "detail", at?: "xml") {
-            return $native("http")().request("GET", this.endpoint + "/provide/" + this.type + "?" + [
+            return $native("http")().request("GET", this.endpoint + "/provide/" + this.table + "?" + [
                 wd && "wd=" + encodeURIComponent(wd),
                 t && "t=" + t,
                 pg && "pg=" + pg,
@@ -40,20 +40,30 @@
                 at && "at=" + at,
             ].filter(i => i).join("&"))
         }
-    }
+    }(
+        "https://api.xinlangapi.com/xinlangapi.php", // 新浪资源
+        // "https://api.apibdzy.com/api.php", // 百度云资源
+        // "https://api.ukuapi.com/api.php", // U 酷资源（百度云资源的子站）
+        // "https://www.qilinzyz.com/api.php", // 麒麟资源
+        // "http://api.fqzy.cc/api.php", // 番茄资源
+        // "https://www.hongniuzy1.com/inc/api.php", // 红牛资源
+        // "https://api.wujinapi.com/api.php", // 无尽资源
+        // "http://www.kuaibozy.com/api.php", // kuaibozy资源
+        // "http://zy.yilans.net:8090/api.php", // 8090 资源
+    )
 
     export default (app => app.run.bind(app))(new class {
         public run(ctx: ServiceContext) {
             const params = ctx.getURL().params
             //@ts-ignore
-            return macapi.query(params.wd?.[0], params.t?.[0], params.pg?.[0], params.h?.[0], params.ids, params.ac?.[0], params.at?.[0]).data
+            return api.query(params.wd?.[0], params.t?.[0], params.pg?.[0], params.h?.[0], params.ids, params.ac?.[0], params.at?.[0]).data
         }
     })
     ```
 
 2. Create a resource with url `/resource/mac/cms`.
     ```html
-    //?name=MacCmsView&type=resource&lang=html&url=mac/cms
+    //?name=MacCms8View&type=resource&lang=html&url=mac/cms&tag=maccms
     <!DOCTYPE html>
     <html>
 
@@ -65,13 +75,40 @@
             body {
                 margin: 12px 8px 8px 8px;
             }
+            .search {
+                display: flex;
+            }
+            .search > input {
+                flex-grow: 1;
+                border: 1px #d9d9d9 solid;
+                border-right: none;
+                outline-style: none;
+                padding: 0 8px;
+            }
+            .search > button {
+                padding: 0 1rem;
+                height: 2rem;
+                background-color: #fff;
+                border: 1px #d9d9d9 solid;
+                cursor: pointer;
+            }
+            .search > button:hover {
+                border: 1px #000000 solid;
+            }
+            .search > button:active {
+                background-color: #eaeaea;
+            }
             .types {
                 display: flex;
                 flex-wrap: wrap;
                 column-gap: 8px; row-gap: 4px;
+                margin-top: 12px;
             }
             .types > a {
                 cursor: pointer;
+            }
+            .types > a.active {
+                font-weight: bold;
             }
             .medias {
                 display: flex;
@@ -106,8 +143,12 @@
     </head>
 
     <body v-clock>
+        <div class="search">
+            <input type="text" v-model="keyword"></input>
+            <button @click="fetch(true)">Search</button>
+        </div>
         <div class="types">
-            <a v-for="type in types" @click="search(type.id)">
+            <a v-for="type in types" @click="() => { typeId = type.id; pageIndex = 1; fetch(true); }" :class="type.id === typeId ? 'active' : ''">
                 {{ type.name }}
             </a>
         </div>
@@ -116,34 +157,32 @@
                 <img :src="media.pic" :title="media.desc" />
                 <p :title="media.name">{{ media.name }}</p>
             </div>
-            <div ref="loading" class="loading" v-show="loading">Loading...</div>
+            <div ref="loading" class="loading" v-show="fetching || !ending"></div>
         </div>
         <script src="https://unpkg.com/vue@3.4.6/dist/vue.global.prod.js"></script>
         <script>
             const app = Vue.createApp({
                 data() {
                     return {
-                        types: [],
-                        medias: [],
                         observer: undefined,
-                        page: 1,
-                        type: "",
-                        loading: true,
+                        types: [], medias: [],
+                        fetching: false, ending: false,
+                        pageIndex: 0, typeId: "", keyword: "",
                     }
                 },
                 methods: {
-                    search(type) {
-                        if (this.type === type) {
+                    fetch(reset = false) {
+                        if (this.fetching) {
                             return
                         }
-                        this.type = type
-                        this.page = 1
-                        this.medias = []
-                        this.fetch()
-                    },
-                    fetch() {
-                        this.loading = true
-                        fetch(`/service/api/mac/cms?t=${this.type}&ac=videolist&pg=${this.page++}`).then(i => i.json()).then(data => {
+                        if (reset) {
+                            this.pageIndex = 0
+                            this.medias = []
+                            this.$refs.loading.innerText = "Loading..."
+                        }
+                        this.fetching = true
+                        fetch(`/service/api/mac/cms?t=${this.typeId}&ac=videolist&pg=${this.pageIndex + 1}&wd=${this.keyword}`).then(i => i.json()).then(data => {
+                            this.pageIndex = Number(data.page)
                             this.medias.push(...data.list.map(i => {
                                 return {
                                     name: i.vod_name,
@@ -152,12 +191,17 @@
                                     uris: i.vod_play_url.split(/(?:#|\$\$\$)/).map(i => i.split("$")),
                                 }
                             }))
-                            if (this.page < data.pagecount) {
+                            if (this.pageIndex < data.pagecount) {
                                 // this.$nextTick(() => this.observer.observe(document.querySelector(".medias > .media:last-child"))) // 监听最后一个元素
                                 this.observer.observe(this.$refs.loading) // 监听底部 loading 元素
+                                this.ending = false
                                 return
                             }
-                            this.loading = false
+                            this.ending = true
+                        }).catch(e => {
+                            this.$refs.loading.innerText = e.message
+                        }).finally(() => {
+                            this.fetching = false
                         })
                     },
                     play(media) {
@@ -170,17 +214,18 @@
                         const entry = entries[0]
                         if(entry.isIntersecting) { // 如果已进入视图，停止监听，并且生成新的元素
                             this.unobserve(entry.target)
-                            that.fetch()
+                            that.fetch(false)
                         }
                     })
                     fetch("/service/api/mac/cms").then(i => i.json()).then(data => {
-                        this.types = data.class.map(i => {
+                        that.types = data.class.map(i => {
                             return {
                                 id: i.type_id,
                                 name: i.type_name,
                             }
                         })
-                        this.search(this.types[0].id)
+                        that.typeId = that.types[0].id
+                        that.fetch(true)
                     })
                     
                 },
