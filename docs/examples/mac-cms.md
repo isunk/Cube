@@ -67,92 +67,161 @@
         <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, viewport-fit=cover" />
         <title>My Vod</title>
         <style>
+            body, p, h3 {
+                margin: 0;
+            }
             body {
                 margin: 12px 8px 8px 8px;
             }
-            .search {
+            .search-area {
                 display: flex;
             }
-            .search > input {
+            .search-area > input {
                 flex-grow: 1;
                 border: 1px #d9d9d9 solid;
                 border-right: none;
                 outline-style: none;
                 padding: 0 8px;
             }
-            .search > button {
+            .search-area > button {
                 padding: 0 1rem;
                 height: 2rem;
                 background-color: #fff;
                 border: 1px #d9d9d9 solid;
                 cursor: pointer;
             }
-            .search > button:hover {
+            .search-area > button:hover {
                 border: 1px #000000 solid;
             }
-            .search > button:active {
+            .search-area > button:active {
                 background-color: #eaeaea;
             }
-            .types {
+            .types-area {
                 display: flex;
                 flex-wrap: wrap;
                 column-gap: 8px; row-gap: 4px;
                 margin-top: 12px;
             }
-            .types > a {
+            .types-area > a {
                 cursor: pointer;
             }
-            .types > a.active {
+            .types-area > a.active {
                 font-weight: bold;
             }
-            .medias {
+            .medias-area {
                 margin-top: 12px;
                 display: grid;
                 grid-template-columns: repeat(auto-fill, 120px);
                 justify-content: space-around;
+                row-gap: 4px;
             }
-            .medias > .media {
+            .medias-area > .media {
                 width: 100%;
                 cursor: pointer;
             }
-            .medias > .media > img {
+            .medias-area > .media > img {
                 width: 100%;
                 aspect-ratio: 0.75;
                 object-fit: cover;
                 height: -webkit-fill-available;
             }
-            .medias > .media > p {
+            .medias-area > .media > p {
                 margin: 0;
                 text-align: center;
                 white-space: nowrap;
                 overflow: hidden; text-overflow: ellipsis;
             }
-            .loading {
+            .loading-area {
                 width: 100%;
                 text-align: center;
                 color: #ccc;
                 margin: 12px 0;
             }
+            .detail-area {
+                position: fixed; top: 0; left: 0;
+                width: 100%; height: 100vh;
+                background: white;
+                display: flex; flex-direction: column;
+            }
+            .back-area {
+                margin: 0 8px;
+                padding: 12px 12px 12px 0;
+                width: fit-content;
+                display: flex; align-items: center;
+                cursor: pointer;
+                font-weight: bold;
+            }
+            .back-area > svg {
+                width: 1em;
+                height: 1em;
+                vertical-align: middle;
+                fill: currentColor;
+                overflow: hidden;
+            }
+            .info-area {
+                margin: 0 8px;
+                height: 320px;
+                display: flex;
+            }
+            .info-area > img {
+                height: 100%;
+                aspect-ratio: 0.75;
+            }
+            .info-area > div {
+                margin: 0 12px;
+                flex-grow: 1; width: 0;
+            }
+            .info-area > div > p {
+                word-break: break-all;
+            }
+            .videos-area {
+                margin-top: 8px;
+                padding: 0 8px 8px 8px;
+                flex-grow: 1;
+                overflow-y: auto;
+            }
+            .videos-area > div + div {
+                margin-top: 8px;
+            }
         </style>
     </head>
 
     <body v-clock>
-        <div class="search">
+        <div class="search-area">
             <input type="text" v-model="keyword"></input>
             <button @click="fetch(true)">Search</button>
         </div>
-        <div class="types">
+        <div class="types-area">
             <a v-for="type in types" @click="() => { typeId = type.id; pageIndex = 1; fetch(true); }" :class="type.id === typeId ? 'active' : ''">
                 {{ type.name }}
             </a>
         </div>
-        <div class="medias">
-            <div class="media" v-for="media in medias" @click="play(media)">
+        <div class="medias-area">
+            <div class="media" v-for="media in medias" @click="detail(media)">
                 <img :src="media.pic" :title="media.desc" />
                 <p :title="media.name">{{ media.name }}</p>
             </div>
         </div>
-        <div ref="loading" class="loading" v-show="fetching || !ending"></div>
+        <div class="loading-area" ref="loading" v-show="fetching || !ending"></div>
+        <div class="detail-area" v-show="detailing">
+            <div class="back-area" @click="close()">
+                <svg class="icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="1754"><path d="M538.288 198.624l-11.312-11.312a16 16 0 0 0-22.64 0L187.312 504.336a16 16 0 0 0 0 22.64L504.336 844a16 16 0 0 0 22.64 0l11.312-11.312a16 16 0 0 0 0-22.624l-294.4-294.4 294.4-294.4a16 16 0 0 0 0-22.64z" fill="#000000" p-id="1755"></path></svg>
+                Back
+            </div>
+            <div class="info-area">
+                <img :src="media.pic" />
+                <div>
+                    <h3>{{ media.name }}</h3>
+                    <p style="margin-top: 12px;">{{ media.desc }}</p>
+                </div>
+            </div>
+            <div class="videos-area">
+                <div v-for="uri in media.uris">
+                    <p>{{ uri[0] }}</p>
+                    <p><a :href="uri[1]" target="_blank">{{ uri[1] }}</a></p>
+                </div>
+            </div>
+        </div>
         <script src="https://unpkg.com/vue@3.4.6/dist/vue.global.prod.js"></script>
         <script>
             const app = Vue.createApp({
@@ -162,6 +231,7 @@
                         types: [], medias: [],
                         fetching: false, ending: false,
                         pageIndex: 0, typeId: "", keyword: "",
+                        detailing: false, media: {},
                     }
                 },
                 methods: {
@@ -198,8 +268,14 @@
                             this.fetching = false
                         })
                     },
-                    play(media) {
-                        window.open(media.uris[0][1])
+                    detail(media) {
+                        this.detailing = true
+                        this.media = media
+                        document.body.style.overflow = "hidden"
+                    },
+                    close() {
+                        this.detailing = false
+                        document.body.style.overflow = "auto"
                     },
                 },
                 mounted() {
