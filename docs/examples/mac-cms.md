@@ -106,14 +106,13 @@
                 font-weight: bold;
             }
             .medias {
-                display: flex;
-                flex-wrap: wrap;
-                justify-content: start;
                 margin-top: 12px;
-                column-gap: 8px; row-gap: 4px;
+                display: grid;
+                grid-template-columns: repeat(auto-fill, 120px);
+                justify-content: space-around;
             }
             .medias > .media {
-                width: 120px;
+                width: 100%;
                 cursor: pointer;
             }
             .medias > .media > img {
@@ -128,11 +127,11 @@
                 white-space: nowrap;
                 overflow: hidden; text-overflow: ellipsis;
             }
-            .medias > .loading {
+            .loading {
                 width: 100%;
                 text-align: center;
                 color: #ccc;
-                margin: 8px 0;
+                margin: 12px 0;
             }
         </style>
     </head>
@@ -140,10 +139,10 @@
     <body v-clock>
         <div class="search">
             <input type="text" v-model="keyword"></input>
-            <button @click="search(typeId, keyword, 1)">Search</button>
+            <button @click="fetch(true)">Search</button>
         </div>
         <div class="types">
-            <a v-for="type in types" @click="type.id !== typeId && search(type.id, keyword, 1)" :class="type.id === typeId ? 'active' : ''">
+            <a v-for="type in types" @click="() => { typeId = type.id; pageIndex = 1; fetch(true); }" :class="type.id === typeId ? 'active' : ''">
                 {{ type.name }}
             </a>
         </div>
@@ -152,8 +151,8 @@
                 <img :src="media.pic" :title="media.desc" />
                 <p :title="media.name">{{ media.name }}</p>
             </div>
-            <div ref="loading" class="loading" v-show="!ending"></div>
         </div>
+        <div ref="loading" class="loading" v-show="fetching || !ending"></div>
         <script src="https://unpkg.com/vue@3.4.6/dist/vue.global.prod.js"></script>
         <script>
             const app = Vue.createApp({
@@ -161,38 +160,43 @@
                     return {
                         observer: undefined,
                         types: [], medias: [],
+                        fetching: false, ending: false,
                         pageIndex: 0, typeId: "", keyword: "",
                     }
                 },
                 methods: {
-                    search(typeId, keyword, pageIndex) {
-                        this.$refs.loading.innerText = "Loading..."
-                        this.typeId = typeId
-                        if (pageIndex === 1) {
-                            this.medias = []
+                    fetch(reset = false) {
+                        if (this.fetching) {
+                            return
                         }
-                        fetch(`/service/api/mac/cms?ac=videolist&t=${typeId}&wd=${keyword}&pg=${pageIndex}`)
-                            .then(i => i.json())
-                            .then(data => {
-                                this.pageIndex = Number(data.page)
-                                this.medias.push(...data.list.map(i => {
-                                    return {
-                                        name: i.vod_name,
-                                        desc: i.vod_content,
-                                        pic: i.vod_pic,
-                                        uris: i.vod_play_url.split(/(?:#|\$\$\$)/).map(i => i.split("$")),
-                                    }
-                                }))
-                                if (this.pageIndex < data.pagecount) {
-                                    // this.$nextTick(() => this.observer.observe(document.querySelector(".medias > .media:last-child"))) // 监听最后一个元素
-                                    this.observer.observe(this.$refs.loading) // 监听底部 loading 元素
-                                    this.$refs.loading.style.display = "block"
-                                    return
+                        if (reset) {
+                            this.pageIndex = 0
+                            this.medias = []
+                            this.$refs.loading.innerText = "Loading..."
+                        }
+                        this.fetching = true
+                        fetch(`/service/api/mac/cms?t=${this.typeId}&ac=videolist&pg=${this.pageIndex + 1}&wd=${this.keyword}`).then(i => i.json()).then(data => {
+                            this.pageIndex = Number(data.page)
+                            this.medias.push(...data.list.map(i => {
+                                return {
+                                    name: i.vod_name,
+                                    desc: i.vod_content,
+                                    pic: i.vod_pic,
+                                    uris: i.vod_play_url.split(/(?:#|\$\$\$)/).map(i => i.split("$")),
                                 }
-                                this.$refs.loading.style.display = "none"
-                            }).catch(e => {
-                                this.$refs.loading.innerText = e.message
-                            })
+                            }))
+                            if (this.pageIndex < data.pagecount) {
+                                // this.$nextTick(() => this.observer.observe(document.querySelector(".medias > .media:last-child"))) // 监听最后一个元素
+                                this.observer.observe(this.$refs.loading) // 监听底部 loading 元素
+                                this.ending = false
+                                return
+                            }
+                            this.ending = true
+                        }).catch(e => {
+                            this.$refs.loading.innerText = e.message
+                        }).finally(() => {
+                            this.fetching = false
+                        })
                     },
                     play(media) {
                         window.open(media.uris[0][1])
@@ -204,23 +208,20 @@
                         const entry = entries[0]
                         if(entry.isIntersecting) { // 如果已进入视图，停止监听，并且生成新的元素
                             this.unobserve(entry.target)
-                            that.search(that.typeId, that.keyword, that.pageIndex + 1)
+                            that.fetch(false)
                         }
                     })
-                    fetch("/service/api/mac/cms")
-                        .then(i => i.json())
-                        .then(data => {
-                            that.types = data.class.map(i => {
-                                return {
-                                    id: i.type_id,
-                                    name: i.type_name,
-                                }
-                            })
-                            that.search(that.types[0].id, that.keyword, 1)
+                    fetch("/service/api/mac/cms").then(i => i.json()).then(data => {
+                        that.types = data.class.map(i => {
+                            return {
+                                id: i.type_id,
+                                name: i.type_name,
+                            }
                         })
-                        .catch(e => {
-                            this.$refs.loading.innerText = e.message
-                        })
+                        that.typeId = that.types[0].id
+                        that.fetch(true)
+                    })
+                    
                 },
             })
             app.mount(document.body)
