@@ -1,4 +1,4 @@
-# Video on Demand Website Based on [MAC CMS](ttps://github.com/magicblack/maccms10/blob/master/%E8%AF%B4%E6%98%8E%E6%96%87%E6%A1%A3/API%E6%8E%A5%E5%8F%A3%E8%AF%B4%E6%98%8E.txt)
+# Video-on-Demand website based on [MAC CMS](ttps://github.com/magicblack/maccms10/blob/master/%E8%AF%B4%E6%98%8E%E6%96%87%E6%A1%A3/API%E6%8E%A5%E5%8F%A3%E8%AF%B4%E6%98%8E.txt)
 
 1. Create a controller with url `/service/api/mac/cms` and method `Get`.
     ```typescript
