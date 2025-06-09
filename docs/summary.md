@@ -44,4 +44,4 @@
 
 - [Video-on-Demand website based on MAC CMS](examples/mac-cms.md)
 
-- [Mocker server](examples/mockd.md)
+- [Mock server](examples/mockd.md)

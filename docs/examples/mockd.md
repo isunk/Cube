@@ -135,14 +135,16 @@
         }
     
         public test(url: string, callback: string) {
+            url = url.replace(/^https?:\/\/[^\/]+/, "").replace(/\?.*$/, "")
             const rec = this.db.query(`
                 SELECT
-                    s.Sort sort,
+                    s.Sort Sort,
                     s.GroupId GroupId,
                     s.Output Output,
+                    g.Progress Progress,
                     CASE
-                        WHEN s.Sort < g.Progress THEN (g.Progress - s.rowid + 999999)
-                        ELSE s.Sort - g.Progress
+                        WHEN s.Sort < g.Progress + 2 THEN (g.Progress - s.rowid)
+                        ELSE s.Sort - g.Progress + 999999
                     END Weight
                 FROM
                     MockService s
@@ -150,16 +152,18 @@
                 WHERE
                     g.Active = 1
                     AND s.Active = 1
-                    AND s.Url = ?
+                    AND s.Url like ?
                 ORDER BY
                     Weight ASC
                     LIMIT 1
-            `, url)?.pop()
-            if (rec) {
-                this.db.exec(`UPDATE MockGroup SET Progress = ? WHERE rowid = ?`, rec.sort, rec.GroupId)
-                return new ServiceResponse(200, undefined, `jsonp.callbacks["${callback}"](${rec.Output})`)
+            `, "%" + url + "%")?.pop()
+            if (!rec) {
+                return new ServiceResponse(200, undefined, `mockc.callbacks["${callback}"](${JSON.stringify({ status: 404, })})`)
             }
-            return new ServiceResponse(404, undefined)
+            if (rec.Sort > rec.Progress) {
+                this.db.exec(`UPDATE MockGroup SET Progress = ? WHERE rowid = ?`, rec.Sort, rec.GroupId)
+            }
+            return new ServiceResponse(200, undefined, `mockc.callbacks["${callback}"](${JSON.stringify({ status: 200, body: JSON.parse(rec.Output), })})`)
         }
     
         private getSearchParams(ctx: ServiceContext) {
@@ -188,7 +192,7 @@
 
 2. Create a resource with url `/resource/mockd`.
     ```html
-    //?name=mockd&type=resource&url=mockd&tag=mock
+    //?name=mockd&type=resource&lang=html&url=mockd&tag=mock
     <!DOCTYPE html>
     <html>
     
@@ -456,6 +460,7 @@
                             }
                             this.group.dialog.visible = false
                             ElMessage.success("Save succeeded")
+                            this.onServiceFetch()
                         }).catch(e => {
                             ElMessage.error(e.message)
                         })
@@ -507,14 +512,14 @@
                         const that = this,
                             reader = new FileReader()
                         reader.onload = function () {
-                            that.service.records = JSON.parse(this.result).log.entries.filter(i => i._resourceType === "xhr").map(i => {
+                            that.service.records.push(...JSON.parse(this.result).log.entries.filter(i => i._resourceType === "xhr").map(i => {
                                 return {
-                                    url: i.request.url,
+                                    url: i.request.url.replace(/^https?:\/\/[^\/]+/, "").replace(/\?.*$/, ""),
                                     output: i.response.content?.text,
                                     active: true,
                                     input: i.request.postData?.text,
                                 }
-                            })
+                            }))
                         }
                         reader.readAsText(file.raw, "utf-8")
                     },
@@ -648,36 +653,26 @@
 
 4. Visit `/resource/mockd` and create a group with uploading a HAR file.
 
-5. Mock using jsonp and endpoint `/service/mockd?test&url=...&callback=...`
+5. Inject mock client using JSONP with src `/service/mockd?test&url=...&callback=...`.
     ```javascript
-    window.jsonp = (url, options) => {
-        jsonp.id = (jsonp.id ?? -1) + 1
-        jsonp.callbacks = jsonp.callbacks || []
+    window.mockc = (endpoint, url, options) => {
+        mockc.id = (mockc.id ?? -1) + 1
+        mockc.callbacks = mockc.callbacks || []
         return new Promise((resolve, reject) => {
-            let tid = undefined,
-                name = "C" + jsonp.id,
+            const name = "C" + mockc.id,
                 body = options?.body ?? "",
                 script = document.createElement("script"),
                 cleanup = () => {
-                    if (tid) {
-                        clearTimeout(tid)
-                    }
                     document.body.removeChild(script)
-                    delete jsonp.callbacks[name]
+                    delete mockc.callbacks[name]
                 }
-            script.src = `${url}${url.includes("?") ? "&" : "?"}callback=${name}&body=${encodeURIComponent(body)}`
-            if (options?.timeout) {
-                tid = setTimeout(() => {
-                    reject(new Error("JSONP request timed out"))
-                    cleanup()
-                }, options.timeout)
-            }
-            jsonp.callbacks[name] = data => {
+            script.src = `${endpoint}/service/mockd?test&url=${encodeURIComponent(url)}&callback=${name}&body=${encodeURIComponent(body)}`
+            mockc.callbacks[name] = data => {
                 resolve(data)
                 cleanup()
             }
             script.onerror = () => {
-                reject(new Error("JSONP request failed"))
+                reject(new Error("Mock(JSONP) request failed"))
                 cleanup()
             }
             document.body.appendChild(script)
@@ -686,9 +681,13 @@
     ```
     For example
     ```javascript
-    const body = jsonp("/service/mockd?test&url=" + encodeURIComponent("/greeting"), {
+    const { status, body } = await mockc("http://127.0.0.1:8090", "/greeting", {
         body: JSON.stringify({
             name: "zhangsan",
         }),
     })
+    ```
+    You can also reverse the server to android devices like that
+    ```bash
+    adb reverse tcp:8090 tcp:8090
     ```
