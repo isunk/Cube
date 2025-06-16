@@ -339,8 +339,8 @@
                                 services: this.service.records.map(i => {
                                     return {
                                         url: i.url,
-                                        output: i.output,
-                                        script: i.script,
+                                        output: i.output ?? "",
+                                        script: i.script ?? "",
                                         active: i.active,
                                     }
                                 })
