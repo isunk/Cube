@@ -24,7 +24,7 @@ interface ServiceContext {
 //#region builtin
 
 declare class ServiceResponse {
-    constructor(status: number, header: { [name: string]: string | number; }, data?: GenericByteArray);
+    constructor(status: number, header?: { [name: string]: string | number; }, data?: GenericByteArray);
     setStatus(status: number): void;
     setHeader(name: string, value: string): void;
     setData(data: GenericByteArray): void;

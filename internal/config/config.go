@@ -15,7 +15,7 @@ var (
 
 func init() {
 	// 获取启动参数
-	flag.IntVar(&Count, "n", 1, "Count of virtual machines.") // 定义命令行参数 c，表示虚拟机的个数，返回 Int 类型指针，默认值为 1，其值在 Parse 后会被修改为命令参数指定的值
+	flag.IntVar(&Count, "n", 16, "Count of virtual machines.") // 定义命令行参数 c，表示虚拟机的个数，返回 Int 类型指针，默认值为 16，其值在 Parse 后会被修改为命令参数指定的值
 	flag.StringVar(&Port, "p", "8090", "Port to listen.")
 	flag.BoolVar(&Secure, "s", false, "Enable https.")
 	flag.BoolVar(&Http3, "3", false, "Enable http3.")

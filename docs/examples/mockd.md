@@ -22,7 +22,7 @@
                 case "DELETE":
                     return this.delete(forms.g?.[0], forms.s?.[0])
                 default:
-                    return new ServiceResponse(405, undefined)
+                    return new ServiceResponse(405)
             }
         }
 
