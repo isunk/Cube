@@ -3,123 +3,120 @@
 1. Create a controller with url `/service/mockd` and method `Any`.
     ```typescript
     //?name=mockd&type=controller&url=mockd&method=&tag=mock
-    type SearchParams = {
-        groupId?: number
-        serviceId?: number
-        setup?: boolean
-        test?: boolean
-        url?: string
-        callback?: string
-    }
-    
     export default (app => app.run.bind(app))(new class {
         private db = $native("db")
-    
+
         public run(ctx: ServiceContext) {
-            const params = this.getSearchParams(ctx)
+            const forms = ctx.getForm()
             switch (ctx.getMethod()) {
                 case "GET":
-                    if (params.setup) {
+                    if ("setup" in forms) {
                         return this.setup()
                     }
-                    if (params.test) {
-                        return this.test(params.url, params.callback)
+                    if ("test" in forms) {
+                        return this.test(forms.u?.[0], forms.c?.[0], forms.b?.[0])
                     }
-                    return this.get(params)
-                case "PUT":
-                    return this.put(params, ctx.getBody().toJson())
+                    return this.get(forms.g?.[0])
                 case "POST":
-                    return this.post(params)
+                    return this.post(forms.g?.[0], ctx.getBody().toJson())
                 case "DELETE":
-                    return this.delete(params)
+                    return this.delete(forms.g?.[0], forms.s?.[0])
                 default:
-                    throw new Error("no such method")
+                    return new ServiceResponse(405, undefined)
             }
         }
-    
+
         public setup() {
-            // this.db.exec("alter table MockService add column Sort INTEGER NOT NULL DEFAULT 0")
             this.db.exec(`
                 DROP TABLE IF EXISTS MockGroup;
                 CREATE TABLE IF NOT EXISTS MockGroup (
                     Name VARCHAR(64) PRIMARY KEY NOT NULL,
-                    Active BOOLEAN NOT NULL DEFAULT false,
-                    Progress INTEGER NOT NULL DEFAULT 0
+                    Active BOOLEAN NOT NULL DEFAULT false
                 );
-    
+
                 DROP TABLE IF EXISTS MockService;
                 CREATE TABLE IF NOT EXISTS MockService (
                     GroupId INTEGER NOT NULL,
                     Url VARCHAR(255) NOT NULL,
                     Output TEXT NOT NULL DEFAULT '',
-                    Active BOOLEAN NOT NULL DEFAULT false,
-                    Sort INTEGER NOT NULL DEFAULT 0
+                    Script TEXT NOT NULL DEFAULT '',
+                    Active BOOLEAN NOT NULL DEFAULT false
                 );
             `);
         }
-    
-        public get(searchParams: SearchParams) {
-            const { groupId } = searchParams
+
+        public test(url: string, callback: string, inputBody?: string) {
+            const record = this.db.query(`
+                SELECT
+                    s.Output output,
+                    s.Script script
+                FROM
+                    MockService s
+                    LEFT JOIN MockGroup g ON s.GroupId = g.rowid
+                WHERE
+                    g.Active = 1
+                    AND s.Active = 1
+                    AND s.Url like ?
+                LIMIT 1
+            `, "%" + url.replace(/^https?:\/\/[^\/]+/, "").replace(/\?.*$/, "") + "%")?.pop()
+            if (!record) {
+                return new ServiceResponse(200, undefined, `mockc.callbacks["${callback}"](${JSON.stringify({ status: 404, })})`)
+            }
+            const input = inputBody && JSON.parse(decodeURIComponent(inputBody)),
+                output = JSON.parse(record.output),
+                body = record.script && (new Function("input", "output", record.script))(input, output) || output
+            return new ServiceResponse(200, undefined, `mockc.callbacks["${callback}"](${JSON.stringify({ status: 200, body, })})`)
+        }
+
+        public get(groupId: string) {
             let wheres = "WHERE GroupId in (SELECT rowid FROM MockGroup WHERE Active = 1)",
                 params = []
-            if (groupId !== undefined) {
+            if (groupId) {
                 wheres = "WHERE GroupId = ?"
                 params.push(groupId)
             }
             return {
-                services: (this.db.query(`SELECT rowid, GroupId, Url, Output, Active, Sort FROM MockService ${wheres}`, ...params) ?? []).map(i => {
+                services: (this.db.query(`SELECT rowid, GroupId, Url, Output, Script, Active FROM MockService ${wheres}`, ...params) ?? []).map(i => {
                     return {
                         id: i.rowid,
                         group: i.GroupId,
                         url: i.Url,
                         output: i.Output,
+                        script: i.Script,
                         active: i.Active,
-                        sort: i.Sort,
                     }
                 }),
-                groups: (this.db.query(`SELECT rowid, Name, Active, Progress FROM MockGroup`) ?? []).map(i => {
+                groups: (this.db.query(`SELECT rowid, Name, Active FROM MockGroup`) ?? []).map(i => {
                     return {
                         id: i.rowid,
                         name: i.Name,
                         active: i.Active,
-                        progress: i.Progress,
                     }
                 }),
             }
         }
-    
-        public put(searchParams: SearchParams, jsonBody: any) {
+
+        public post(groupId: string, jsonBody: any) {
             const { name, services } = jsonBody
             if (!services.length) {
                 return 0
             }
-            let groupId = searchParams.groupId
             this.db.transaction(tx => {
                 const group = groupId && tx.query(`SELECT rowid, Name FROM MockGroup where rowid = ?`, groupId)?.pop()
                 if (group) {
                     tx.exec(`DELETE FROM MockService WHERE GroupId = ?`, groupId)
-                    tx.exec(`UPDATE MockGroup SET Name = ? WHERE rowid = ?`, name, groupId)
+                    tx.exec(`UPDATE MockGroup SET Name = ?, Active = 1 WHERE rowid = ?`, name, groupId)
                 } else {
-                    tx.exec(`INSERT INTO MockGroup (Name, Active, Progress) VALUES (?, 1, 0)`, name)
+                    tx.exec(`INSERT INTO MockGroup (Name, Active) VALUES (?, 1)`, name)
                     groupId = tx.query("SELECT last_insert_rowid() id")[0].id
                 }
-                tx.exec(`INSERT INTO MockService (GroupId, Url, Output, Active, Sort) VALUES ${services.map(() => "(?, ?, ?, ?, ?)").join(",")}`, ...services.map(s => [groupId, s.url, s.output, s.active, s.sort]).flat())
+                tx.exec(`INSERT INTO MockService (GroupId, Url, Output, Script, Active) VALUES ${services.map(() => "(?, ?, ?, ?, ?)").join(",")}`, ...services.map(s => [groupId, s.url, s.output, s.script, s.active]).flat())
                 tx.exec(`UPDATE MockGroup SET Active = 0 WHERE rowid <> ?`, groupId)
             })
             return groupId
         }
-    
-        public post(searchParams: SearchParams) {
-            const { groupId } = searchParams
-            this.db.transaction(tx => {
-                tx.exec(`UPDATE MockGroup SET Active = 1, Progress = 0 WHERE rowid = ?`, groupId)
-                tx.exec(`UPDATE MockGroup SET Active = 0 WHERE rowid <> ?`, groupId)
-            })
-            return
-        }
-    
-        public delete(searchParams: SearchParams) {
-            const { groupId, serviceId } = searchParams
+
+        public delete(groupId: string, serviceId: string) {
             if (serviceId !== undefined) {
                 return this.db.exec(`DELETE FROM MockService WHERE rowid = ?`, serviceId)
             }
@@ -133,60 +130,6 @@
             }
             return 0
         }
-    
-        public test(url: string, callback: string) {
-            url = url.replace(/^https?:\/\/[^\/]+/, "").replace(/\?.*$/, "")
-            const rec = this.db.query(`
-                SELECT
-                    s.Sort Sort,
-                    s.GroupId GroupId,
-                    s.Output Output,
-                    g.Progress Progress,
-                    CASE
-                        WHEN s.Sort < g.Progress + 2 THEN (g.Progress - s.rowid)
-                        ELSE s.Sort - g.Progress + 999999
-                    END Weight
-                FROM
-                    MockService s
-                    LEFT JOIN MockGroup g ON s.GroupId = g.rowid
-                WHERE
-                    g.Active = 1
-                    AND s.Active = 1
-                    AND s.Url like ?
-                ORDER BY
-                    Weight ASC
-                    LIMIT 1
-            `, "%" + url + "%")?.pop()
-            if (!rec) {
-                return new ServiceResponse(200, undefined, `mockc.callbacks["${callback}"](${JSON.stringify({ status: 404, })})`)
-            }
-            if (rec.Sort > rec.Progress) {
-                this.db.exec(`UPDATE MockGroup SET Progress = ? WHERE rowid = ?`, rec.Sort, rec.GroupId)
-            }
-            return new ServiceResponse(200, undefined, `mockc.callbacks["${callback}"](${JSON.stringify({ status: 200, body: JSON.parse(rec.Output), })})`)
-        }
-    
-        private getSearchParams(ctx: ServiceContext) {
-            const form = ctx.getForm(),
-                output = {} as SearchParams
-            if (/^\d+$/.test(form.g?.[0])) {
-                output.groupId = Number(form.g?.[0])
-            }
-            if (/^\d+$/.test(form.s?.[0])) {
-                output.serviceId = Number(form.s?.[0])
-            }
-            if ("setup" in form) {
-                output.setup = true
-            }
-            if ("test" in form) {
-                output.test = true
-                if ("test" in form) {
-                    output.url = form.url?.[0]
-                    output.callback = form.callback?.[0]
-                }
-            }
-            return output
-        }
     })
     ```
 
@@ -195,79 +138,40 @@
     //?name=mockd&type=resource&lang=html&url=mockd&tag=mock
     <!DOCTYPE html>
     <html>
-    
+
     <head>
         <meta charset="UTF-8">
         <link rel="stylesheet" href="/libs/element-plus/2.9.1/index.min.css" />
         <script src="/libs/vue/3.5.13/vue.global.prod.min.js"></script>
+        <!-- <script src="https://cdn.bootcdn.net/ajax/libs/vue/3.5.13/vue.global.min.js"></script> -->
         <script src="/libs/element-plus/2.9.1/index.full.min.js"></script>
         <script src="/libs/element-plus-icons-vue/2.3.1/index.iife.min.js"></script>
         <title>mockd</title>
         <base target="_blank" />
         <style>
-            html,
-            body {
+            html, body {
                 height: 100%;
                 margin: 0;
                 background-color: #f0f2f5;
             }
-    
             .el-table {
                 border-top: 1px solid #dcdfe6;
             }
-    
-            .el-pagination {
-                flex: auto;
-                margin-top: 13px;
-            }
-    
-            .el-pagination .is-first {
-                flex: auto;
-            }
-    
             .el-table .disabled {
                 border-color: #e4e7ed;
                 color: #c0c4cc;
                 cursor: not-allowed;
             }
-    
-            .el-dialog {
-                max-width: 720px;
+            .el-dialog__headerbtn {
+                height: 32px;
+                top: unset;
             }
-    
-            .el-dialog .el-input-group__prepend .el-checkbox-group {
-                margin: 0 -20px;
-            }
-    
-            .el-dialog .el-input-group__prepend .el-checkbox-button__inner {
-                border-right: 0;
-                border-top-right-radius: 0 !important;
-                border-bottom-right-radius: 0 !important;
-                text-decoration: line-through;
-                color: var(--el-disabled-text-color);
-            }
-    
-            .el-dialog .el-input-group__prepend .is-checked .el-checkbox-button__inner {
-                text-decoration: none;
-                color: white;
-            }
-    
-            .el-dialog .el-select {
-                max-width: 180px;
-            }
-    
-            .el-tag {
-                max-width: 160px;
-            }
-    
-            .el-tag .el-tag__content {
-                overflow: hidden;
-                text-overflow: ellipsis;
-                line-height: 1rem;
+            .el-pagination {
+                margin-top: 13px;
             }
         </style>
     </head>
-    
+
     <body>
         <div id="app" v-cloak style="padding: 32px; position: relative;">
             <el-card>
@@ -280,8 +184,7 @@
                     <div style="margin-left: auto; display: inline-flex;">
                         <el-button-group style="padding-left: 5px;">
                             <el-button :icon="Check" @click="onBeforeGroupSave" v-if="service.records.length"></el-button>
-                            <el-button :icon="VideoPlay" @click="onGroupPlay" v-if="group.record && service.records.length"></el-button>
-                            <el-button :icon="Delete" @click="onGroupDelete" type="danger" v-if="group.record"></el-button>
+                            <el-button :icon="Delete" @click="onGroupDelete" v-if="group.record"></el-button>
                         </el-button-group>
                     </div>
                 </el-row>
@@ -290,6 +193,7 @@
             <el-card>
                 <el-row style="padding-bottom: 10px;">
                     <el-button-group style="padding-left: 5px;">
+                        <el-button :icon="Plus" @click="onServiceAdd"></el-button>
                         <el-upload :auto-upload="false" action="" :on-change="onServiceImport" :show-file-list="false" accept=".har" style="display: none;">
                             <el-button ref="UploadRef"></el-button>
                         </el-upload>
@@ -299,12 +203,12 @@
                     </el-button-group>
                 </el-row>
                 <el-row>
-                    <el-table v-loading="service.loading" :data="service.records" :row-class-name="({ row }) => row.active ? '' : 'disabled'" @selection-change="(rows) => this.service.selections = rows">
-                        <el-table-column type="selection" :selectable="(row) => row.active" width="40">
+                    <el-table v-loading="service.loading" :data="service.records" :row-class-name="onServiceClass" @selection-change="(rows) => this.service.selections = rows" @row-click="onServiceSelect">
+                        <el-table-column type="selection" width="40">
                         </el-table-column>
                         <el-table-column label="#" width="60">
                             <template #default="scope">
-                                <span :style="{ color: group.record?.active && group.record?.progress === scope.row.sort ? '#409eff' : '#c0c4cc' }">{{ scope.row.sort = scope.$index }}</span>
+                                <span>{{ scope.$index }}</span>
                             </template>
                         </el-table-column>
                         <el-table-column label="URL" prop="url" :show-overflow-tooltip="true">
@@ -316,17 +220,12 @@
                         </el-table-column>
                         <el-table-column label="Size" width="100">
                             <template #default="scope">
-                                {{ (scope.row.output.length / 1024).toFixed(2) }} KB
-                            </template>
-                        </el-table-column>
-                        <el-table-column label="Group" prop="group" :show-overflow-tooltip="true" width="160">
-                            <template #default="scope">
-                                {{ group.records.find(i => i.id === scope.row.group)?.name }}
+                                {{ ((scope.row.output?.length ?? 0) / 1024).toFixed(2) }} KB
                             </template>
                         </el-table-column>
                         <el-table-column label="Operation" width="100">
                             <template #default="scope">
-                                <el-switch v-model="scope.row.active" size="small" style="margin-right: 12px;">
+                                <el-switch v-model="scope.row.active" size="small" style="margin-right: 12px;" @change="onServiceActiveSwitch(scope.row)">
                                 </el-switch>
                                 <el-button link type="danger" @click="service.records = service.records.filter(i => i != scope.row)" :icon="Delete">
                                 </el-button>
@@ -337,22 +236,19 @@
                     </el-pagination>
                 </el-row>
             </el-card>
-            <el-dialog v-model="group.dialog.visible" :title="group.dialog.title">
-                <el-form>
-                    <el-form-item label="Name" style="margin: 12px 16px 16px 16px;">
-                        <el-input v-model="group.dialog.name" />
-                    </el-form-item>
-                </el-form>
+            <el-dialog v-model="group.dialog.visible">
+                <template #header>
+                    <el-input v-model="group.dialog.record.name" placeholder="Please input group name"></el-input>
+                </template>
                 <template #footer>
-                    <el-button @click="group.dialog.visible = false">Cancel</el-button>
                     <el-button @click="onGroupSave" type="primary">Confirm</el-button>
                 </template>
             </el-dialog>
             <el-dialog v-model="service.dialog.visible" title="Service">
+                <template #header>
+                    <el-input v-model="service.dialog.record.url" placeholder="Please input service url"></el-input>
+                </template>
                 <el-form>
-                    <el-form-item label="Name" style="margin: 12px 16px 16px 16px;">
-                        <el-input v-model="service.dialog.record.url" />
-                    </el-form-item>
                     <el-tabs tab-position="left">
                         <el-tab-pane label="Output">
                             <monaco-editor v-model="this['proxy.service.dialog.record.output']" height="512px" language="json"></monaco-editor>
@@ -369,28 +265,27 @@
             Vue.createApp({
                 setup() {
                     const { ref } = Vue
-                    const { Delete, Download, Edit, Search, Plus, Position, Upload, VideoPause, VideoPlay, Check, MostlyCloudy, } = ElementPlusIconsVue
+                    const { Delete, Download, Plus, Upload, Check, } = ElementPlusIconsVue
                     return {
-                        Delete, Download, Edit, Search, Plus, Position, Upload, VideoPause, VideoPlay, Check, MostlyCloudy,
-                        FormRef: ref(),
+                        Delete, Download, Plus, Upload, Check,
                         UploadRef: ref(),
                     }
                 },
                 computed: {
                     "proxy.service.dialog.record.output": {
                         get() {
-                            return JSON.stringify(JSON.parse(this.service.dialog.record.output), undefined, 2)
+                            return this.service.dialog.record.output && JSON.stringify(JSON.parse(this.service.dialog.record.output), undefined, 2)
                         },
                         set(value) {
-                            this.service.dialog.record.output = JSON.stringify(JSON.parse(value))
+                            this.service.dialog.record.output = value ? JSON.stringify(JSON.parse(value)) : value
                         },
                     },
                     "proxy.service.dialog.record.script": {
                         get() {
-                            return ""
+                            return this.service.dialog.record.script ?? ""
                         },
                         set(value) {
-                            
+                            this.service.dialog.record.script = value ?? ""
                         },
                     },
                     "proxy.group.id": {
@@ -398,7 +293,7 @@
                             return this.group.record?.id
                         },
                         set(value) {
-                            this.group.record = this.group.records.find(i => i.id === value)
+                            this.group.record = this.group.records.find(i => i.id === value) ?? {}
                         },
                     },
                 },
@@ -408,8 +303,7 @@
                             record: {},
                             records: [],
                             dialog: {
-                                title: "",
-                                name: "",
+                                record: {},
                                 visiable: false,
                             },
                         },
@@ -417,6 +311,7 @@
                             loading: false,
                             records: [],
                             selections: [],
+                            highlights: [],
                             dialog: {
                                 record: {},
                                 visiable: false,
@@ -426,31 +321,27 @@
                 },
                 methods: {
                     onBeforeGroupSave() {
-                        const group = this.group.record
-                        if (group) {
-                            this.group.dialog.name = group.name
-                            this.group.dialog.title = group.name
-                        } else {
-                            this.group.dialog.name = new Date().toISOString().replace(/[-T:\.Z]/g, "")
-                            this.group.dialog.title = "New a group"
+                        this.group.dialog.record = {
+                            name: new Date().toISOString().replace(/[-T:\.Z]/g, ""),
+                            ...this.group.record,
                         }
                         this.group.dialog.visible = true
                     },
                     onGroupSave() {
-                        if (!this.group.dialog.name) {
+                        if (!this.group.dialog.record.name) {
                             ElMessage.warning("Group name is required")
                             return
                         }
                         fetch(`/service/mockd?g=${this["proxy.group.id"] ?? ""}`, {
-                            method: "PUT",
+                            method: "POST",
                             body: JSON.stringify({
-                                name: this.group.dialog.name,
+                                name: this.group.dialog.record.name,
                                 services: this.service.records.map(i => {
                                     return {
                                         url: i.url,
                                         output: i.output,
+                                        script: i.script,
                                         active: i.active,
-                                        sort: i.sort,
                                     }
                                 })
                             })
@@ -460,20 +351,6 @@
                             }
                             this.group.dialog.visible = false
                             ElMessage.success("Save succeeded")
-                            this.onServiceFetch()
-                        }).catch(e => {
-                            ElMessage.error(e.message)
-                        })
-                    },
-                    onGroupPlay() {
-                        fetch(`/service/mockd?g=${this["proxy.group.id"] ?? ""}`, {
-                            method: "POST",
-                        }).then(r => {
-                            if (r.status !== 200) {
-                                throw new Error(r.statusText)
-                            }
-                            this.group.dialog.visible = false
-                            ElMessage.success("Active or reactive succeeded")
                             this.onServiceFetch()
                         }).catch(e => {
                             ElMessage.error(e.message)
@@ -512,14 +389,21 @@
                         const that = this,
                             reader = new FileReader()
                         reader.onload = function () {
-                            that.service.records.push(...JSON.parse(this.result).log.entries.filter(i => i._resourceType === "xhr").map(i => {
+                            const records = JSON.parse(this.result).log.entries.filter(i => i._resourceType === "xhr").map(i => {
                                 return {
                                     url: i.request.url.replace(/^https?:\/\/[^\/]+/, "").replace(/\?.*$/, ""),
                                     output: i.response.content?.text,
-                                    active: true,
+                                    script: "",
+                                    active: false,
                                     input: i.request.postData?.text,
                                 }
-                            }))
+                            })
+                            for (const record of records) {
+                                if (!that.service.records.some(i => i.active && i.url === record.url)) {
+                                    record.active = true
+                                }
+                                that.service.records.push(record)
+                            }
                         }
                         reader.readAsText(file.raw, "utf-8")
                     },
@@ -576,9 +460,36 @@
                     onServiceDelete() {
                         this.service.records = this.service.records.filter(i => !this.service.selections.some(s => s == i))
                     },
-                    onServiceEdit(record) {
+                    onServiceAdd() {
+                        this.service.dialog.record = {}
+                        this.service.records.push(this.service.dialog.record)
+                        this.service.dialog.visible = true
+                    },
+                    onServiceEdit(record, evt) {
                         this.service.dialog.record = record
                         this.service.dialog.visible = true
+                    },
+                    onServiceActiveSwitch(record) {
+                        if (!record.active) {
+                            return
+                        }
+                        this.service.records.filter(i => i.active && i.url === record.url).forEach(i => {
+                            i.active = false
+                        })
+                        record.active = true
+                    },
+                    onServiceSelect(record) {
+                        this.service.highlights = this.service.records.filter(i => i.url === record.url)
+                    },
+                    onServiceClass({ row }) {
+                        let clz = ""
+                        if (!row.active) {
+                            clz += " disabled"
+                        }
+                        if (this.service.highlights.includes(row)) {
+                            clz += " current-row"
+                        }
+                        return clz
                     },
                 },
                 mounted() {
@@ -645,7 +556,7 @@
             }).use(ElementPlus).mount("#app")
         </script>
     </body>
-    
+
     </html>
     ```
 
@@ -653,7 +564,7 @@
 
 4. Visit `/resource/mockd` and create a group with uploading a HAR file.
 
-5. Inject mock client using JSONP with src `/service/mockd?test&url=...&callback=...`.
+5. Inject mock client using JSONP with src `/service/mockd?test&u=...&c=...&b=...`.
     ```javascript
     window.mockc = (endpoint, url, options) => {
         mockc.id = (mockc.id ?? -1) + 1
@@ -666,7 +577,7 @@
                     document.body.removeChild(script)
                     delete mockc.callbacks[name]
                 }
-            script.src = `${endpoint}/service/mockd?test&url=${encodeURIComponent(url)}&callback=${name}&body=${encodeURIComponent(body)}`
+            script.src = `${endpoint}/service/mockd?test&u=${encodeURIComponent(url)}&c=${name}&b=${encodeURIComponent(body)}`
             mockc.callbacks[name] = data => {
                 resolve(data)
                 cleanup()
