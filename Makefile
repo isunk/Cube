@@ -4,7 +4,7 @@
 
 # 运行
 run: # 从代码中运行
-	@go run . -n 8
+	@go run .
 
 watch: # 监听当前目录下的相关文件变动，实时编译、运行
 	@gowatch -o ./cube
