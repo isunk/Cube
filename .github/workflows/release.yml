@@ -97,9 +97,9 @@ jobs:
       - name: Package
         run: |
           tar -zcvf cube-latest-docker.tar.gz cube.tar
-      - name: Checksum
-        run: |
-          md5sum cube-latest-docker.tar.gz | cut -d ' ' -f 1 > cube-latest-docker.tar.gz.md5
+      # - name: Checksum
+      #   run: |
+      #     md5sum cube-latest-docker.tar.gz | cut -d ' ' -f 1 > cube-latest-docker.tar.gz.md5
       - name: Upload
         uses: svenstaro/upload-release-action@v2
         with:
