@@ -30,15 +30,15 @@ build: clean # 默认使用 CDN 资源并且不使用 UPX 压缩，即 make buil
 			if [ -f "web/$$name" ]; then
 				continue
 			fi
-			wget --no-check-certificate -x "https://cdn.bootcdn.net/ajax/$$name" -P "web/$$(dirname $$name)"
+			wget --no-check-certificate "https://cdn.bootcdn.net/ajax/$$name" -P "web/$$(dirname $$name)"
 		done
 		# 下载 monaco-editor 资源
 		export LANG=C.UTF-8
 		export version=`grep -horP "monaco-editor/[\d\.]+" ./web | uniq | cut -d "/" -f 2`
 		if [ ! -d "./web/libs/monaco-editor/$$version/" ]; then
 			mkdir -p "./web/libs/monaco-editor/$$version/"
-			wget --no-check-certificate -x "https://registry.npm.taobao.org/monaco-editor/-/monaco-editor-$$version.tgz"
-			tar -zxf monaco-editor-$$version.tgz -C "./web/libs/monaco-editor/$$version/" --strip-components 1 "package/min"
+			wget --no-check-certificate "https://registry.npm.taobao.org/monaco-editor/-/monaco-editor-$$version.tgz"
+			tar -zxf "monaco-editor-$$version.tgz" -C "./web/libs/monaco-editor/$$version/" --strip-components 1 "package/min"
 			rm monaco-editor-$$version.tgz
 		fi
 		# 替换 HTML 中的 CDN 地址
