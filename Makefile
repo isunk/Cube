@@ -30,24 +30,23 @@ build: clean # 默认使用 CDN 资源并且不使用 UPX 压缩，即 make buil
 			if [ -f "web/$$name" ]; then
 				continue
 			fi
-			mkdir -p "web/$$(dirname $$name)"
-			curl -sk --compressed "https://cdn.bootcdn.net/ajax/$$name" -o "web/$$name"
+			wget --no-check-certificate -x "https://cdn.bootcdn.net/ajax/$$name" -P "web/$$(dirname $$name)"
 		done
-		# 下载 monaco-editor 资源文件
+		# 下载 monaco-editor 资源
 		export LANG=C.UTF-8
 		export version=`grep -horP "monaco-editor/[\d\.]+" ./web | uniq | cut -d "/" -f 2`
 		if [ ! -d "./web/libs/monaco-editor/$$version/" ]; then
-			curl -skOL "https://registry.npm.taobao.org/monaco-editor/-/monaco-editor-$$version.tgz"
 			mkdir -p "./web/libs/monaco-editor/$$version/"
+			wget --no-check-certificate -x "https://registry.npm.taobao.org/monaco-editor/-/monaco-editor-$$version.tgz"
 			tar -zxf monaco-editor-$$version.tgz -C "./web/libs/monaco-editor/$$version/" --strip-components 1 "package/min"
 			rm monaco-editor-$$version.tgz
 		fi
-		# 替换 html 中的 cdn 地址
+		# 替换 HTML 中的 CDN 地址
 		sed -i 's#https://cdn.bootcdn.net/ajax/libs#/libs#g' web/*.html
 		sed -i "s#\"/libs/monaco-editor/$$version/min/vs\"#window.location.origin + \"/libs/monaco-editor/$$version/min/vs\"#g" web/editor.html # 由于这里的 URL 需要在 Service Worker 中动态获取，因此需要补充完整的域名
 		# 编译（删除符号、调试信息）
 		go build -ldflags "-s -w" .
-		# 还原 html 中的 cdn 地址
+		# 还原 HTML 中的 CDN 地址
 		sed -i "s#window.location.origin + \"/libs/monaco-editor/$$version/min/vs\"#\"/libs/monaco-editor/$$version/min/vs\"#g" web/editor.html
 		sed -i 's#/libs#https://cdn.bootcdn.net/ajax/libs#g' web/*.html
 	else
