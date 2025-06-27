@@ -5,7 +5,7 @@
     //?name=mockd&type=controller&url=mockd&method=&tag=mock
     export default (app => app.run.bind(app))(new class {
         private db = $native("db")
-
+    
         public run(ctx: ServiceContext) {
             const forms = ctx.getForm()
             switch (ctx.getMethod()) {
@@ -25,7 +25,7 @@
                     return new ServiceResponse(405)
             }
         }
-
+    
         public setup() {
             this.db.exec(`
                 DROP TABLE IF EXISTS MockGroup;
@@ -33,23 +33,25 @@
                     Name VARCHAR(64) PRIMARY KEY NOT NULL,
                     Active BOOLEAN NOT NULL DEFAULT false
                 );
-
+    
                 DROP TABLE IF EXISTS MockService;
                 CREATE TABLE IF NOT EXISTS MockService (
                     GroupId INTEGER NOT NULL,
                     Url VARCHAR(255) NOT NULL,
                     Output TEXT NOT NULL DEFAULT '',
                     Script TEXT NOT NULL DEFAULT '',
+                    Setting TEXT NOT NULL DEFAULT '',
                     Active BOOLEAN NOT NULL DEFAULT false
                 );
             `);
         }
-
+    
         public test(url: string, callback: string, inputBody?: string) {
             const record = this.db.query(`
                 SELECT
                     s.Output output,
-                    s.Script script
+                    s.Script script,
+                    s.Setting setting
                 FROM
                     MockService s
                     LEFT JOIN MockGroup g ON s.GroupId = g.rowid
@@ -62,12 +64,16 @@
             if (!record) {
                 return new ServiceResponse(200, undefined, `mockc.callbacks["${callback}"](${JSON.stringify({ status: 404, })})`)
             }
+            const setting = record.setting ? JSON.parse(record.setting) : {}
+            if (setting.time) {
+                setTimeout(() => {}, setting.time)
+            }
             const input = inputBody && JSON.parse(decodeURIComponent(inputBody)),
                 output = JSON.parse(record.output),
                 body = record.script && (new Function("input", "output", record.script))(input, output) || output
-            return new ServiceResponse(200, undefined, `mockc.callbacks["${callback}"](${JSON.stringify({ status: 200, body, })})`)
+            return new ServiceResponse(200, undefined, `mockc.callbacks["${callback}"](${JSON.stringify({ status: setting.status ?? 200, body, })})`)
         }
-
+    
         public get(groupId: string) {
             let wheres = "WHERE GroupId in (SELECT rowid FROM MockGroup WHERE Active = 1)",
                 params = []
@@ -76,13 +82,14 @@
                 params.push(groupId)
             }
             return {
-                services: (this.db.query(`SELECT rowid, GroupId, Url, Output, Script, Active FROM MockService ${wheres}`, ...params) ?? []).map(i => {
+                services: (this.db.query(`SELECT rowid, GroupId, Url, Output, Script, Setting, Active FROM MockService ${wheres}`, ...params) ?? []).map(i => {
                     return {
                         id: i.rowid,
                         group: i.GroupId,
                         url: i.Url,
                         output: i.Output,
                         script: i.Script,
+                        setting: i.Setting,
                         active: i.Active,
                     }
                 }),
@@ -95,7 +102,7 @@
                 }),
             }
         }
-
+    
         public post(groupId: string, jsonBody: any) {
             const { name, services } = jsonBody
             if (!services.length) {
@@ -110,12 +117,12 @@
                     tx.exec(`INSERT INTO MockGroup (Name, Active) VALUES (?, 1)`, name)
                     groupId = tx.query("SELECT last_insert_rowid() id")[0].id
                 }
-                tx.exec(`INSERT INTO MockService (GroupId, Url, Output, Script, Active) VALUES ${services.map(() => "(?, ?, ?, ?, ?)").join(",")}`, ...services.map(s => [groupId, s.url, s.output, s.script, s.active]).flat())
+                tx.exec(`INSERT INTO MockService (GroupId, Url, Output, Script, Setting, Active) VALUES ${services.map(() => "(?, ?, ?, ?, ?, ?)").join(",")}`, ...services.map(s => [groupId, s.url, s.output, s.script, s.setting, s.active]).flat())
                 tx.exec(`UPDATE MockGroup SET Active = 0 WHERE rowid <> ?`, groupId)
             })
             return groupId
         }
-
+    
         public delete(groupId: string, serviceId: string) {
             if (serviceId !== undefined) {
                 return this.db.exec(`DELETE FROM MockService WHERE rowid = ?`, serviceId)
@@ -138,7 +145,7 @@
     //?name=mockd&type=resource&lang=html&url=mockd&tag=mock
     <!DOCTYPE html>
     <html>
-
+    
     <head>
         <meta charset="UTF-8">
         <link rel="stylesheet" href="/libs/element-plus/2.9.1/index.min.css" />
@@ -162,6 +169,9 @@
                 color: #c0c4cc;
                 cursor: not-allowed;
             }
+            .el-table .disabled a {
+                color: #c0c4cc;
+            }
             .el-dialog__headerbtn {
                 height: 32px;
                 top: unset;
@@ -171,7 +181,7 @@
             }
         </style>
     </head>
-
+    
     <body>
         <div id="app" v-cloak style="padding: 32px; position: relative;">
             <el-card>
@@ -256,6 +266,9 @@
                         <el-tab-pane label="Script" lazy>
                             <monaco-editor v-model="this['proxy.service.dialog.record.script']" height="512px" language="javascript"></monaco-editor>
                         </el-tab-pane>
+                        <el-tab-pane label="Setting" lazy>
+                            <monaco-editor v-model="this['proxy.service.dialog.record.setting']" height="512px" language="json"></monaco-editor>
+                        </el-tab-pane>
                     </el-tabs>
                 </el-form>
             </el-dialog>
@@ -282,10 +295,18 @@
                     },
                     "proxy.service.dialog.record.script": {
                         get() {
-                            return this.service.dialog.record.script ?? ""
+                            return this.service.dialog.record.script ?? "// input, output"
                         },
                         set(value) {
                             this.service.dialog.record.script = value ?? ""
+                        },
+                    },
+                    "proxy.service.dialog.record.setting": {
+                        get() {
+                            return this.service.dialog.record.setting && JSON.stringify(JSON.parse(this.service.dialog.record.setting), undefined, 2)
+                        },
+                        set(value) {
+                            this.service.dialog.record.setting = value ?? ""
                         },
                     },
                     "proxy.group.id": {
@@ -341,6 +362,7 @@
                                         url: i.url,
                                         output: i.output ?? "",
                                         script: i.script ?? "",
+                                        setting: i.setting ?? "",
                                         active: i.active,
                                     }
                                 })
@@ -394,6 +416,10 @@
                                     url: i.request.url.replace(/^https?:\/\/[^\/]+/, "").replace(/\?.*$/, ""),
                                     output: i.response.content?.text,
                                     script: "",
+                                    setting: JSON.stringify({
+                                        time: i.time,
+                                        status: i.response.status,
+                                    }),
                                     active: false,
                                     input: i.request.postData?.text,
                                 }
@@ -556,7 +582,7 @@
             }).use(ElementPlus).mount("#app")
         </script>
     </body>
-
+    
     </html>
     ```
 
