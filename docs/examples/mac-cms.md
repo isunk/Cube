@@ -297,7 +297,7 @@
                         that.typeId = that.types[0].id
                         that.fetch(true)
                     })
-                    
+
                 },
             })
             app.mount(document.body)

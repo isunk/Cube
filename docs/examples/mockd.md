@@ -5,7 +5,7 @@
     //?name=mockd&type=controller&url=mockd&method=&tag=mock
     export default (app => app.run.bind(app))(new class {
         private db = $native("db")
-    
+
         public run(ctx: ServiceContext) {
             const forms = ctx.getForm()
             switch (ctx.getMethod()) {
@@ -25,7 +25,7 @@
                     return new ServiceResponse(405)
             }
         }
-    
+
         public setup() {
             this.db.exec(`
                 DROP TABLE IF EXISTS MockGroup;
@@ -33,7 +33,7 @@
                     Name VARCHAR(64) PRIMARY KEY NOT NULL,
                     Active BOOLEAN NOT NULL DEFAULT false
                 );
-    
+
                 DROP TABLE IF EXISTS MockService;
                 CREATE TABLE IF NOT EXISTS MockService (
                     GroupId INTEGER NOT NULL,
@@ -45,7 +45,7 @@
                 );
             `);
         }
-    
+
         public test(url: string, callback: string, inputBody?: string) {
             const record = this.db.query(`
                 SELECT
@@ -73,7 +73,7 @@
                 body = record.script && (new Function("input", "output", record.script))(input, output) || output
             return new ServiceResponse(200, undefined, `mockc.callbacks["${callback}"](${JSON.stringify({ status: setting.status ?? 200, body, })})`)
         }
-    
+
         public get(groupId: string) {
             let wheres = "WHERE GroupId in (SELECT rowid FROM MockGroup WHERE Active = 1)",
                 params = []
@@ -102,7 +102,7 @@
                 }),
             }
         }
-    
+
         public post(groupId: string, jsonBody: any) {
             const { name, services } = jsonBody
             if (!services.length) {
@@ -122,7 +122,7 @@
             })
             return groupId
         }
-    
+
         public delete(groupId: string, serviceId: string) {
             if (serviceId !== undefined) {
                 return this.db.exec(`DELETE FROM MockService WHERE rowid = ?`, serviceId)
@@ -145,7 +145,7 @@
     //?name=mockd&type=resource&lang=html&url=mockd&tag=mock
     <!DOCTYPE html>
     <html>
-    
+
     <head>
         <meta charset="UTF-8">
         <link rel="stylesheet" href="/libs/element-plus/2.9.1/index.min.css" />
@@ -181,7 +181,7 @@
             }
         </style>
     </head>
-    
+
     <body>
         <div id="app" v-cloak style="padding: 32px; position: relative;">
             <el-card>
@@ -582,7 +582,7 @@
             }).use(ElementPlus).mount("#app")
         </script>
     </body>
-    
+
     </html>
     ```
 

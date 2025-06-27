@@ -24,7 +24,7 @@
             if (name === "" || name[name.length - 1] === "/") {
                 return this.toDir(name, zipFiles)
             }
-    
+
             // 根据文件的前 8 个字节来判断文件的类型
             const headers = this.getHeaderBytes(name, 8, zipFiles),
                 magic = headers.map(i => i.toString(16).padStart(2, '0')).join("").toUpperCase(),
@@ -108,7 +108,7 @@
     //?name=FileReader4Image&type=resource&lang=html&url=image
     <!DOCTYPE html>
     <html>
-    
+
     <head>
         <meta charset="UTF-8">
         <title></title>
@@ -126,7 +126,7 @@
             }
         </style>
     </head>
-    
+
     <body>
         <div id="app"></div>
         <script>
@@ -184,7 +184,7 @@
             });
         </script>
     </body>
-    
+
     </html>
     ```
 

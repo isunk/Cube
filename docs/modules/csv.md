@@ -136,7 +136,7 @@ export class CSV {
 
         return content;
     }
-    
+
     public static toSimpleCSV(objs: object[], headers: string[]): string {
         return headers.join(",") + "\n" + objs.map(o => {
             const tokens = [];

@@ -427,7 +427,7 @@ export default function (ctx: ServiceContext): ServiceResponse | Uint8Array | an
     if (!Schemas[name]) {
         return new ServiceResponse(404, undefined)
     }
-    
+
     const dyntab = new MyDynamicTable(name, Schemas[name]),
         params = new Proxy(ctx.getURL().params, {
             get(target: any, property: string) {

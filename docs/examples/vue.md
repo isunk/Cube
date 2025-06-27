@@ -155,7 +155,7 @@
             .then(innerHTML => {
                 const doc = document.implementation.createHTMLDocument("")
                 doc.body.innerHTML = innerHTML
-                
+
                 const sfc = {}
 
                 for (let e = doc.body.firstChild; e; e = e.nextSibling) {
@@ -215,7 +215,7 @@
                         }
                     }
                 }
-                
+
                 // template
                 if (sfc.template) {
                     sfc.script.module.exports.template = sfc.template.innerHTML

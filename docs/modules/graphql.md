@@ -745,7 +745,7 @@ export default function (ctx) {
             }
         }), null, "    "
     ));
-    
+
     console.info("Query:", JSON.stringify(
         // 查询记录
         G.query({

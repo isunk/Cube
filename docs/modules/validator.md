@@ -134,15 +134,15 @@ class Validator {
         if ("collection" in schema && schema.collection) {
             // 校验是否是集合
             this.assert(parameter instanceof Array, `The parameter ${schema.label} should be a collection.`);
-    
+
             // 校验集合最小长度
             this.assert(!(schema.collection.min != null && parameter.length < schema.collection.min), `The min length of parameter ${schema.label} is ${schema.collection.min}.`);
             // 校验集合最大长度
             this.assert(!(schema.collection.max != null && parameter.length > schema.collection.max), `The max length of parameter ${schema.label} is ${schema.collection.max}.`);
-    
+
             // 校验集合元素是否互相不重复
             this.assert(!("unique" in schema.collection && schema.collection.unique === true && this.unique(parameter).length !== parameter.length), `The parameter ${schema.label} should be unique.`);
-    
+
             for (let p of parameter) {
                 this.onValidation(p, schema, strict);
             }

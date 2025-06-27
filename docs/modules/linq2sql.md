@@ -181,7 +181,7 @@ export default function (ctx) {
     const input: Partial<user> = {
         name: "zhang",
     }
-    
+
     Dataset.from(user)
         .where(u => u.id.eq(1))
         .update({ name: "zhangsan@" + new Date().getTime() })
