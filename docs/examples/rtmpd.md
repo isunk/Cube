@@ -2,6 +2,7 @@
 
 1. Create a daemon with name `rtmpd` and start.
     ```typescript
+    //?name=rtmpd&type=daemon&tag=rtmp2httpflv
     export default function () {
         const c = new RtmpConnection($native("socket")("tcp").listen(1935).accept())
 
@@ -440,6 +441,7 @@
 
 2. Create a controller with url `/service/httpflv`.
     ```typescript
+    //?name=httpflv&type=controller&url=httpflv&method=&tag=rtmp2httpflv
     export default function (ctx: ServiceContext) {
         ctx.resetTimeout(30 * 60 * 1000)
 
@@ -475,13 +477,14 @@
 
 3. Create a resource with lang `html` and url `/resource/httpflv`.
     ```html
+    //?name=httpflv&type=resource&lang=html&url=httpflv&tag=rtmp2httpflv
     <script src="https://cdn.bootcdn.net/ajax/libs/flv.js/1.6.2/flv.min.js"></script>
     <video id="videoElement" onclick="player.play()" style="width: 100%; height: 100%;"></video>
     <script>
         if (flvjs.isSupported()) {
             var player = flvjs.createPlayer({
                 type: "flv",
-                url: "/service/1_httpflv_srv",
+                url: "/service/httpflv",
                 enableWorker: true,
                 enableStashBuffer: true,
             })
