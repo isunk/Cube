@@ -37,41 +37,48 @@
                 DROP TABLE IF EXISTS MockService;
                 CREATE TABLE IF NOT EXISTS MockService (
                     GroupId INTEGER NOT NULL,
-                    Url VARCHAR(255) NOT NULL,
-                    Output TEXT NOT NULL DEFAULT '',
-                    Script TEXT NOT NULL DEFAULT '',
-                    Setting TEXT NOT NULL DEFAULT '',
-                    Active BOOLEAN NOT NULL DEFAULT false
+                    Active BOOLEAN NOT NULL DEFAULT false,
+                    URL VARCHAR(255) NOT NULL,
+                    StatusCode INTEGER NOT NULL DEFAULT 200,
+                    Headers TEXT NOT NULL DEFAULT '',
+                    Body TEXT NOT NULL DEFAULT '',
+                    PreResponseScript TEXT NOT NULL DEFAULT '',
+                    Settings TEXT NOT NULL DEFAULT ''
                 );
             `);
         }
 
-        public test(url: string, callback: string, inputBody?: string) {
-            const record = this.db.query(`
+        public test(url: string, callback: string, requestBody?: string) {
+            const service = this.db.query(`
                 SELECT
-                    s.Output output,
-                    s.Script script,
-                    s.Setting setting
+                    s.StatusCode status,
+                    s.Headers headers,
+                    s.Body body,
+                    s.PreResponseScript script,
+                    s.Settings settings
                 FROM
                     MockService s
                     LEFT JOIN MockGroup g ON s.GroupId = g.rowid
                 WHERE
                     g.Active = 1
                     AND s.Active = 1
-                    AND s.Url like ?
+                    AND s.URL like ?
                 LIMIT 1
             `, "%" + url.replace(/^https?:\/\/[^\/]+/, "").replace(/\?.*$/, "") + "%")?.pop()
-            if (!record) {
+            if (!service) {
                 return new ServiceResponse(200, undefined, `mockc.callbacks["${callback}"](${JSON.stringify({ status: 404, })})`)
             }
-            const setting = record.setting ? JSON.parse(record.setting) : {}
-            if (setting.time) {
-                setTimeout(() => {}, setting.time)
+            const settings = service.settings ? JSON.parse(service.settings) : {}
+            if (settings.time) {
+                setTimeout(() => { }, settings.time)
             }
-            const input = inputBody && JSON.parse(decodeURIComponent(inputBody)),
-                output = JSON.parse(record.output),
-                body = record.script && (new Function("input", "output", record.script))(input, output) || output
-            return new ServiceResponse(200, undefined, `mockc.callbacks["${callback}"](${JSON.stringify({ status: setting.status ?? 200, body, })})`)
+            const input = requestBody && JSON.parse(decodeURIComponent(requestBody)),
+                output = JSON.parse(service.body)
+            return new ServiceResponse(200, undefined, `mockc.callbacks["${callback}"](${JSON.stringify({
+                status: service.status || 200,
+                headers: service.headers && JSON.parse(service.headers) || {},
+                body: service.script && (new Function("input", "output", service.script))(input, output) || output,
+            })})`)
         }
 
         public get(groupId: string) {
@@ -82,15 +89,17 @@
                 params.push(groupId)
             }
             return {
-                services: (this.db.query(`SELECT rowid, GroupId, Url, Output, Script, Setting, Active FROM MockService ${wheres}`, ...params) ?? []).map(i => {
+                services: (this.db.query(`SELECT rowid, GroupId, Active, URL, StatusCode, Headers, Body, PreResponseScript, Settings FROM MockService ${wheres}`, ...params) ?? []).map(i => {
                     return {
                         id: i.rowid,
                         group: i.GroupId,
-                        url: i.Url,
-                        output: i.Output,
-                        script: i.Script,
-                        setting: i.Setting,
                         active: i.Active,
+                        url: i.URL,
+                        status: i.StatusCode,
+                        headers: i.Headers,
+                        body: i.Body,
+                        script: i.PreResponseScript,
+                        settings: i.Settings,
                     }
                 }),
                 groups: (this.db.query(`SELECT rowid, Name, Active FROM MockGroup`) ?? []).map(i => {
@@ -103,8 +112,7 @@
             }
         }
 
-        public post(groupId: string, jsonBody: any) {
-            const { name, services } = jsonBody
+        public post(groupId: string, { name, services }) {
             if (!services.length) {
                 return 0
             }
@@ -117,7 +125,16 @@
                     tx.exec(`INSERT INTO MockGroup (Name, Active) VALUES (?, 1)`, name)
                     groupId = tx.query("SELECT last_insert_rowid() id")[0].id
                 }
-                tx.exec(`INSERT INTO MockService (GroupId, Url, Output, Script, Setting, Active) VALUES ${services.map(() => "(?, ?, ?, ?, ?, ?)").join(",")}`, ...services.map(s => [groupId, s.url, s.output, s.script, s.setting, s.active]).flat())
+                tx.exec(`INSERT INTO MockService (GroupId, Active, URL, StatusCode, Headers, Body, PreResponseScript, Settings) VALUES ${services.map(() => "(?, ?, ?, ?, ?, ?, ?, ?)").join(",")}`, ...services.map(s => [
+                    groupId,
+                    s.active ?? false,
+                    s.url,
+                    s.status || 200,
+                    s.headers || "",
+                    s.body || "",
+                    s.script || "",
+                    s.settings || "",
+                ]).flat())
                 tx.exec(`UPDATE MockGroup SET Active = 0 WHERE rowid <> ?`, groupId)
             })
             return groupId
@@ -156,26 +173,32 @@
         <title>mockd</title>
         <base target="_blank" />
         <style>
-            html, body {
+            html,
+            body {
                 height: 100%;
                 margin: 0;
                 background-color: #f0f2f5;
             }
+
             .el-table {
                 border-top: 1px solid #dcdfe6;
             }
+
             .el-table .disabled {
                 border-color: #e4e7ed;
                 color: #c0c4cc;
                 cursor: not-allowed;
             }
+
             .el-table .disabled a {
                 color: #c0c4cc;
             }
+
             .el-dialog__headerbtn {
                 height: 32px;
                 top: unset;
             }
+
             .el-pagination {
                 margin-top: 13px;
             }
@@ -186,7 +209,8 @@
         <div id="app" v-cloak style="padding: 32px; position: relative;">
             <el-card>
                 <el-row style="padding-bottom: 10px;">
-                    <el-select v-model="this['proxy.group.id']" placeholder="Select a group" clearable @change="(value) => value && onServiceFetch()" style="width: 240px">
+                    <el-select v-model="this['proxy.group.id']" placeholder="Select a group" clearable
+                        @change="(value) => value && onServiceFetch()" style="width: 240px">
                         <el-option v-for="group in group.records" :key="group.id" :label="group.name" :value="group.id">
                             <span v-if="group.active" style="font-weight: bolder;">{{ group.name }}</span>
                         </el-option>
@@ -194,7 +218,7 @@
                     <div style="margin-left: auto; display: inline-flex;">
                         <el-button-group style="padding-left: 5px;">
                             <el-button :icon="Check" @click="onBeforeGroupSave" v-if="service.records.length"></el-button>
-                            <el-button :icon="Delete" @click="onGroupDelete" v-if="group.record"></el-button>
+                            <el-button :icon="Delete" @click="onGroupDelete" v-if="group.record?.id"></el-button>
                         </el-button-group>
                     </div>
                 </el-row>
@@ -204,7 +228,8 @@
                 <el-row style="padding-bottom: 10px;">
                     <el-button-group style="padding-left: 5px;">
                         <el-button :icon="Plus" @click="onServiceAdd"></el-button>
-                        <el-upload :auto-upload="false" action="" :on-change="onServiceImport" :show-file-list="false" accept=".har" style="display: none;">
+                        <el-upload :auto-upload="false" action="" :on-change="onServiceImport" :show-file-list="false"
+                            accept=".har" style="display: none;">
                             <el-button ref="UploadRef"></el-button>
                         </el-upload>
                         <el-button :icon="Upload" @click="() => this.$refs.UploadRef.ref.click()"></el-button>
@@ -213,7 +238,8 @@
                     </el-button-group>
                 </el-row>
                 <el-row>
-                    <el-table v-loading="service.loading" :data="service.records" :row-class-name="onServiceClass" @selection-change="(rows) => this.service.selections = rows" @row-click="onServiceSelect">
+                    <el-table v-loading="service.loading" :data="service.records" :row-class-name="onServiceClass"
+                        @selection-change="(rows) => this.service.selections = rows" @row-click="onServiceSelect">
                         <el-table-column type="selection" width="40">
                         </el-table-column>
                         <el-table-column label="#" width="60">
@@ -228,16 +254,23 @@
                                 </el-link>
                             </template>
                         </el-table-column>
-                        <el-table-column label="Size" width="100">
+                        <el-table-column label="Status Code" width="120">
                             <template #default="scope">
-                                {{ ((scope.row.output?.length ?? 0) / 1024).toFixed(2) }} KB
+                                {{ scope.row.status }}
+                            </template>
+                        </el-table-column>
+                        <el-table-column label="Body Size" width="100">
+                            <template #default="scope">
+                                {{ ((scope.row.body?.length ?? 0) / 1024).toFixed(2) }} KB
                             </template>
                         </el-table-column>
                         <el-table-column label="Operation" width="100">
                             <template #default="scope">
-                                <el-switch v-model="scope.row.active" size="small" style="margin-right: 12px;" @change="onServiceActiveSwitch(scope.row)">
+                                <el-switch v-model="scope.row.active" size="small" style="margin-right: 12px;"
+                                    @change="onServiceActiveSwitch(scope.row)">
                                 </el-switch>
-                                <el-button link type="danger" @click="service.records = service.records.filter(i => i != scope.row)" :icon="Delete">
+                                <el-button link type="danger"
+                                    @click="service.records = service.records.filter(i => i != scope.row)" :icon="Delete">
                                 </el-button>
                             </template>
                         </el-table-column>
@@ -259,15 +292,21 @@
                     <el-input v-model="service.dialog.record.url" placeholder="Please input service url"></el-input>
                 </template>
                 <el-form>
-                    <el-tabs tab-position="left">
-                        <el-tab-pane label="Output">
-                            <monaco-editor v-model="this['proxy.service.dialog.record.output']" height="512px" language="json"></monaco-editor>
+                    <el-tabs tab-position="left" style="height: 500px;">
+                        <el-tab-pane label="Body" lazy>
+                            <monaco-editor v-model="service.dialog.record.body" height="500px" language="json"></monaco-editor>
                         </el-tab-pane>
-                        <el-tab-pane label="Script" lazy>
-                            <monaco-editor v-model="this['proxy.service.dialog.record.script']" height="512px" language="javascript"></monaco-editor>
+                        <el-tab-pane label="Headers" lazy>
+                            <monaco-editor v-model="service.dialog.record.headers" height="500px" language="json"></monaco-editor>
                         </el-tab-pane>
-                        <el-tab-pane label="Setting" lazy>
-                            <monaco-editor v-model="this['proxy.service.dialog.record.setting']" height="512px" language="json"></monaco-editor>
+                        <el-tab-pane label="Status Code">
+                            <el-input v-model.number="service.dialog.record.status" type="text" autocomplete="off"></el-input>
+                        </el-tab-pane>
+                        <el-tab-pane label="Pre-Response Script" lazy>
+                            <monaco-editor v-model="service.dialog.record.script" height="500px" language="javascript"></monaco-editor>
+                        </el-tab-pane>
+                        <el-tab-pane label="Settings" lazy>
+                            <monaco-editor v-model="service.dialog.record.settings" height="500px" language="json"></monaco-editor>
                         </el-tab-pane>
                     </el-tabs>
                 </el-form>
@@ -285,30 +324,6 @@
                     }
                 },
                 computed: {
-                    "proxy.service.dialog.record.output": {
-                        get() {
-                            return this.service.dialog.record.output && JSON.stringify(JSON.parse(this.service.dialog.record.output), undefined, 2)
-                        },
-                        set(value) {
-                            this.service.dialog.record.output = value ? JSON.stringify(JSON.parse(value)) : value
-                        },
-                    },
-                    "proxy.service.dialog.record.script": {
-                        get() {
-                            return this.service.dialog.record.script ?? "// input, output"
-                        },
-                        set(value) {
-                            this.service.dialog.record.script = value ?? ""
-                        },
-                    },
-                    "proxy.service.dialog.record.setting": {
-                        get() {
-                            return this.service.dialog.record.setting && JSON.stringify(JSON.parse(this.service.dialog.record.setting), undefined, 2)
-                        },
-                        set(value) {
-                            this.service.dialog.record.setting = value ?? ""
-                        },
-                    },
                     "proxy.group.id": {
                         get() {
                             return this.group.record?.id
@@ -338,6 +353,9 @@
                                 visiable: false,
                             },
                         },
+                        constants: {
+                            HEADER_WHITELIST: ["Content-Type"].map(i => i.toUpperCase()),
+                        },
                     }
                 },
                 methods: {
@@ -357,15 +375,7 @@
                             method: "POST",
                             body: JSON.stringify({
                                 name: this.group.dialog.record.name,
-                                services: this.service.records.map(i => {
-                                    return {
-                                        url: i.url,
-                                        output: i.output ?? "",
-                                        script: i.script ?? "",
-                                        setting: i.setting ?? "",
-                                        active: i.active,
-                                    }
-                                })
+                                services: this.service.records,
                             })
                         }).then(r => {
                             if (r.status !== 200) {
@@ -413,15 +423,18 @@
                         reader.onload = function () {
                             const records = JSON.parse(this.result).log.entries.filter(i => i._resourceType === "xhr").map(i => {
                                 return {
-                                    url: i.request.url.replace(/^https?:\/\/[^\/]+/, "").replace(/\?.*$/, ""),
-                                    output: i.response.content?.text,
-                                    script: "",
-                                    setting: JSON.stringify({
-                                        time: i.time,
-                                        status: i.response.status,
-                                    }),
                                     active: false,
-                                    input: i.request.postData?.text,
+                                    url: i.request.url.replace(/^https?:\/\/[^\/]+/, "").replace(/\?.*$/, ""),
+                                    status: i.response.status,
+                                    headers: JSON.stringify(i.response.headers.filter(i => that.constants.HEADER_WHITELIST.includes(i.name.toUpperCase())).reduce((p, c) => {
+                                        p[c.name] = c.value
+                                        return p
+                                    }, {})),
+                                    body: i.response.content?.text,
+                                    script: "",
+                                    settings: JSON.stringify({
+                                        time: i.time,
+                                    }),
                                 }
                             })
                             for (const record of records) {
@@ -449,15 +462,12 @@
                                         _resourceType: "xhr",
                                         request: {
                                             url: i.url,
-                                            postData: {
-                                                text: i.input,
-                                            }
                                         },
                                         response: {
-                                            status: 200,
+                                            status: i.status,
                                             content: {
-                                                text: i.output,
-                                            }
+                                                text: i.body,
+                                            },
                                         },
                                     }
                                 })
@@ -551,6 +561,12 @@
                                         }))
                                     }
                                     return map.get(src)
+                                },
+                                format = (value) => {
+                                    if (props.language === "json") {
+                                        return JSON.stringify(JSON.parse(value), undefined, 2)
+                                    }
+                                    return value
                                 }
                             require("/libs/monaco-editor/0.52.2/min/vs/loader.js")
                                 .then(() => {
@@ -560,7 +576,7 @@
                                     window.require(["vs/editor/editor.main"], () => {
                                         const editor = window.monaco.editor.create(container.value, {
                                             language: props.language,
-                                            value: props.modelValue,
+                                            value: format(props.modelValue),
                                         })
                                         editor.onDidChangeModelContent(() => {
                                             emit("update:modelValue", editor.getValue())
@@ -568,7 +584,7 @@
                                         editor.updateOptions({ readOnly: props.readOnly ?? false })
                                         Vue.watch(() => props.modelValue, (newValue, oldValue) => {
                                             if (newValue !== oldValue && newValue !== editor.getValue()) {
-                                                editor.setValue(newValue)
+                                                editor.setValue(format(newValue))
                                             }
                                         })
                                     })
