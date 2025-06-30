@@ -81,6 +81,7 @@
             })})`) : new ServiceResponse(service.status || 200, {
                 "Access-Control-Allow-Origin": "*",
                 "Access-Control-Allow-Methods": "*",
+                "Access-Control-Allow-Headers": "*",
                 ...(service.headers && JSON.parse(service.headers)),
             }, JSON.stringify(service.script && (new Function("input", "output", service.script))(input, output) || output))
         }
