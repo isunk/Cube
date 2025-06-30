@@ -8,14 +8,14 @@
 
         public run(ctx: ServiceContext) {
             const forms = ctx.getForm()
+            if ("setup" in forms) {
+                return this.setup()
+            }
+            if ("test" in forms) {
+                return this.test(forms.u?.[0], forms.c?.[0], forms.b?.[0] ?? ctx.getBody()?.toString())
+            }
             switch (ctx.getMethod()) {
                 case "GET":
-                    if ("setup" in forms) {
-                        return this.setup()
-                    }
-                    if ("test" in forms) {
-                        return this.test(forms.u?.[0], forms.c?.[0], forms.b?.[0])
-                    }
                     return this.get(forms.g?.[0])
                 case "POST":
                     return this.post(forms.g?.[0], ctx.getBody().toJson())
@@ -48,7 +48,7 @@
             `);
         }
 
-        public test(url: string, callback: string, requestBody?: string) {
+        public test(url: string, callback?: string, requestBody?: string) {
             const service = this.db.query(`
                 SELECT
                     s.StatusCode status,
@@ -66,7 +66,7 @@
                 LIMIT 1
             `, "%" + url.replace(/^https?:\/\/[^\/]+/, "").replace(/\?.*$/, "") + "%")?.pop()
             if (!service) {
-                return new ServiceResponse(200, undefined, `mockc.callbacks["${callback}"](${JSON.stringify({ status: 404, })})`)
+                return callback ? new ServiceResponse(200, undefined, `mockc.callbacks["${callback}"](${JSON.stringify({ status: 404, })})`) : new ServiceResponse(404)
             }
             const settings = service.settings ? JSON.parse(service.settings) : {}
             if (settings.time) {
@@ -74,11 +74,15 @@
             }
             const input = requestBody && JSON.parse(decodeURIComponent(requestBody)),
                 output = JSON.parse(service.body)
-            return new ServiceResponse(200, undefined, `mockc.callbacks["${callback}"](${JSON.stringify({
+            return callback ? new ServiceResponse(200, undefined, `mockc.callbacks["${callback}"](${JSON.stringify({
                 status: service.status || 200,
                 headers: service.headers && JSON.parse(service.headers) || {},
                 body: service.script && (new Function("input", "output", service.script))(input, output) || output,
-            })})`)
+            })})`) : new ServiceResponse(service.status || 200, {
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Methods": "*",
+                ...(service.headers && JSON.parse(service.headers)),
+            }, JSON.stringify(service.script && (new Function("input", "output", service.script))(input, output) || output))
         }
 
         public get(groupId: string) {
@@ -606,8 +610,9 @@
 
 4. Visit `/resource/mockd` and create a group with uploading a HAR file.
 
-5. Inject mock client using JSONP with src `/service/mockd?test&u=...&c=...&b=...`.
+5. Inject mock client with src `/service/mockd?test&u=...`.
     ```javascript
+    // mock using JSONP request with src `/service/mockd?test&u=...&c=...&b=...`
     window.mockc = (endpoint, url, options) => {
         mockc.id = (mockc.id ?? -1) + 1
         mockc.callbacks = mockc.callbacks || []
@@ -631,10 +636,16 @@
             document.body.appendChild(script)
         })
     }
+
+    // mock using http request
+    window.mockc = (endpoint, url, options) => {
+        return fetch(`${endpoint}/service/mockd?test&u=${encodeURIComponent(url)}`, options)
+    }
     ```
     For example
     ```javascript
     const { status, body } = await mockc("http://127.0.0.1:8090", "/greeting", {
+        method: "POST",
         body: JSON.stringify({
             name: "zhangsan",
         }),
