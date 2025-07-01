@@ -178,32 +178,26 @@
         <title>mockd</title>
         <base target="_blank" />
         <style>
-            html,
-            body {
+            html, body {
                 height: 100%;
                 margin: 0;
                 background-color: #f0f2f5;
             }
-
             .el-table {
                 border-top: 1px solid #dcdfe6;
             }
-
             .el-table .disabled {
                 border-color: #e4e7ed;
                 color: #c0c4cc;
                 cursor: not-allowed;
             }
-
             .el-table .disabled a {
                 color: #c0c4cc;
             }
-
             .el-dialog__headerbtn {
                 height: 32px;
                 top: unset;
             }
-
             .el-pagination {
                 margin-top: 13px;
             }
@@ -212,7 +206,7 @@
 
     <body>
         <div id="app" v-cloak style="padding: 32px; position: relative;">
-            <el-card>
+            <el-card style="position: sticky; top: 0; z-index: 999;">
                 <el-row style="padding-bottom: 10px;">
                     <el-select v-model="this['proxy.group.id']" placeholder="Select a group" clearable
                         @change="(value) => value && onServiceFetch()" style="width: 240px">
