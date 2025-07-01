@@ -611,48 +611,58 @@
 
 4. Visit `/resource/mockd` and create a group with uploading a HAR file.
 
-5. Inject mock client with src `/service/mockd?test&u=...`.
-    ```javascript
-    // mock using JSONP request with src `/service/mockd?test&u=...&c=...&b=...`
-    window.mockc = (endpoint, url, options) => {
-        mockc.id = (mockc.id ?? -1) + 1
-        mockc.callbacks = mockc.callbacks || []
-        return new Promise((resolve, reject) => {
-            const name = "C" + mockc.id,
-                body = options?.body ?? "",
-                script = document.createElement("script"),
-                cleanup = () => {
-                    document.body.removeChild(script)
-                    delete mockc.callbacks[name]
+5. Inject mock client.
+    - Using JSONP request with src `/service/mockd?test&u=...&c=...&b=...`
+        ```javascript
+        window.mockc = (endpoint, url, options) => {
+            mockc.id = (mockc.id ?? -1) + 1
+            mockc.callbacks = mockc.callbacks || []
+            return new Promise((resolve, reject) => {
+                const name = "C" + mockc.id,
+                    body = options?.body ?? "",
+                    script = document.createElement("script"),
+                    cleanup = () => {
+                        document.body.removeChild(script)
+                        delete mockc.callbacks[name]
+                    }
+                script.src = `${endpoint}/service/mockd?test&u=${encodeURIComponent(url)}&c=${name}&b=${encodeURIComponent(body)}`
+                mockc.callbacks[name] = data => {
+                    resolve(data)
+                    cleanup()
                 }
-            script.src = `${endpoint}/service/mockd?test&u=${encodeURIComponent(url)}&c=${name}&b=${encodeURIComponent(body)}`
-            mockc.callbacks[name] = data => {
-                resolve(data)
-                cleanup()
-            }
-            script.onerror = () => {
-                reject(new Error("Mock(JSONP) request failed"))
-                cleanup()
-            }
-            document.body.appendChild(script)
+                script.onerror = () => {
+                    reject(new Error("Mock(JSONP) request failed"))
+                    cleanup()
+                }
+                document.body.appendChild(script)
+            })
+        }
+        ```
+        For example
+        ```javascript
+        const { status, body } = await mockc("http://127.0.0.1:8090", "/greeting", {
+            body: JSON.stringify({
+                name: "zhangsan",
+            }),
         })
-    }
+        ```
+    - Using fetch request with src `/service/mockd?test&u=...`
+        ```javascript
+        window.mockc = (endpoint, url, options) => {
+            return fetch(`${endpoint}/service/mockd?test&u=${encodeURIComponent(url)}`, options)
+        }
+        ```
+        For example
+        ```javascript
+        await mockc("http://127.0.0.1:8090", "/greeting", {
+            method: "POST",
+            body: JSON.stringify({
+                name: "zhangsan",
+            }),
+        })
+        ```
 
-    // mock using http request
-    window.mockc = (endpoint, url, options) => {
-        return fetch(`${endpoint}/service/mockd?test&u=${encodeURIComponent(url)}`, options)
-    }
-    ```
-    For example
-    ```javascript
-    const { status, body } = await mockc("http://127.0.0.1:8090", "/greeting", {
-        method: "POST",
-        body: JSON.stringify({
-            name: "zhangsan",
-        }),
-    })
-    ```
-    You can also reverse the server to android devices like that
+6. You can also reverse the server to android devices like that
     ```bash
     adb reverse tcp:8090 tcp:8090
     ```
