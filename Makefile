@@ -71,13 +71,16 @@ update: # 更新依赖
 wrk: # 性能压测
 	@wrk -t8 -c256 -R 20000 -d5s http://127.0.0.1:8090/service/greeting
 
-fmt: # 格式化 .go 文件代码
+fmt: # 格式化代码
 	@
+	# 格式化 .go 文件
 	if command -v gofumpt >/dev/null 2>&1; then
 		gofumpt -l -w . # 优先使用 gofumpt 格式化代码，安装：go install mvdan.cc/gofumpt@latest
 	else
 		find ./ -name "*.go" | xargs -I {} go fmt {}
 	fi
+	# 格式化 .md 文件（去除由空格组成的空行）
+	find -name "*.md" | xargs sed -i "s/^[[:space:]]*$$//g"
 
 vet: # 静态代码检查
 	@go vet ./...
