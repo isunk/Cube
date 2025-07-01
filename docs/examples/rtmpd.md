@@ -104,7 +104,6 @@
             const { header, data } = c.readChunk()
             if (header.messageTypeId === 0x14) {
                 // 客户端通知服务器解绑释放推流点请求
-                console.log(header.messageTypeId, String.fromCharCode(...data))
                 c.close()
                 $native("event").emit("HTTPFLV_STOP", 0)
                 break

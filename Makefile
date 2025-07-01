@@ -3,7 +3,7 @@
 .ONESHELL: # target 中的每行命令使用同一个 shell，用于支持多行命令
 
 # 运行
-run: # 从代码中运行
+run: config # 从代码中运行
 	@go run .
 
 watch: # 监听当前目录下的相关文件变动，实时编译、运行
@@ -19,18 +19,33 @@ bench: # 执行（基准）单元测试用例
 	@go test -v -run=^$ -benchmem -bench=. ./... | grep -v 'no test files'
 
 # 编译
-build: clean # 默认使用 CDN 资源并且不使用 UPX 压缩，即 make build CDN=1 UPX=0
+build: clean config # 默认不使用 CDN 资源、不使用 UPX 压缩，即 make build CDN=0 UPX=0
 	@
-	# 是否使用 CDN 资源
-	if [ "$(CDN)" = "0" ]; then # 构建一个不依赖于 CDN 的版本，依赖的 js、css 等库文件将下载至本地 web/libs 目录下
+	# 编译（删除符号、调试信息）
+	go build -ldflags "-s -w" .
+	# 是否使用 UPX 压缩
+	if [ "$(UPX)" = "1" ]; then
+		if [ "$(shell uname)" = "Linux" ]; then
+			upx -9 -q -o cubemin cube
+		else
+			upx -9 -q -o cubemin.exe cube.exe
+		fi
+	fi
+
+config:
+	@
+	if [ "$(CDN)" = "1" ]; then # 使用 CDN 资源
+	    sed -i "s#window.location.origin + \"/libs/monaco-editor/$$version/min/vs\"#\"/libs/monaco-editor/$$version/min/vs\"#g" web/editor.html # 由于这里的 URL 需要在 Service Worker 中动态获取，因此需要补充完整的域名
+		sed -i 's#"/libs/#"https://cdn.bootcdn.net/ajax/libs/#g' web/*.html
+	else # 构建一个不依赖于 CDN 的版本，依赖的 js、css 等库文件将下载至本地 web/libs 目录下
 		# 下载除 monaco-editor 外所有 css、js 资源文件
-		grep -hor "https://cdn.bootcdn.net/ajax/libs/[^\"'\'''\'']*" ./web | grep -v "monaco-editor" | sort | uniq | while read uri
+		grep -hor "/libs/[^\"'\'''\'']*" ./web | grep -v "monaco-editor" | sort | uniq | while read uri
 		do
-			name=$${uri#https://cdn.bootcdn.net/ajax/}
-			if [ -f "web/$$name" ]; then
+			name=$${uri#/libs/}
+			if [ -f "web/libs/$$name" ]; then
 				continue
 			fi
-			wget --no-check-certificate "https://cdn.bootcdn.net/ajax/$$name" -P "web/$$(dirname $$name)"
+			wget --no-check-certificate "https://cdn.bootcdn.net/ajax/libs/$$name" -P "web/libs/$$(dirname $$name)"
 		done
 		# 下载 monaco-editor 资源
 		export LANG=C.UTF-8
@@ -40,24 +55,6 @@ build: clean # 默认使用 CDN 资源并且不使用 UPX 压缩，即 make buil
 			wget --no-check-certificate "https://registry.npm.taobao.org/monaco-editor/-/monaco-editor-$$version.tgz"
 			tar -zxf "monaco-editor-$$version.tgz" -C "./web/libs/monaco-editor/$$version/" --strip-components 1 "package/min"
 			rm monaco-editor-$$version.tgz
-		fi
-		# 替换 HTML 中的 CDN 地址
-		sed -i 's#https://cdn.bootcdn.net/ajax/libs#/libs#g' web/*.html
-		sed -i "s#\"/libs/monaco-editor/$$version/min/vs\"#window.location.origin + \"/libs/monaco-editor/$$version/min/vs\"#g" web/editor.html # 由于这里的 URL 需要在 Service Worker 中动态获取，因此需要补充完整的域名
-		# 编译（删除符号、调试信息）
-		go build -ldflags "-s -w" .
-		# 还原 HTML 中的 CDN 地址
-		sed -i "s#window.location.origin + \"/libs/monaco-editor/$$version/min/vs\"#\"/libs/monaco-editor/$$version/min/vs\"#g" web/editor.html
-		sed -i 's#/libs#https://cdn.bootcdn.net/ajax/libs#g' web/*.html
-	else
-		go build -ldflags "-s -w" .
-	fi
-	# 是否使用 UPX 压缩
-	if [ "$(UPX)" = "1" ]; then
-		if [ "$(shell uname)" = "Linux" ]; then
-			upx -9 -q -o cubemin cube
-		else
-			upx -9 -q -o cubemin.exe cube.exe
 		fi
 	fi
 
