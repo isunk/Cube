@@ -10,9 +10,9 @@ A simple web server that can be developed online using typescript/javascript.
     ```bash
     make build
     ```
-    Or build without CDN and compress with UPX:
+    Or build with CDN and compress with UPX:
     ```bash
-    make build CDN=0 UPX=1
+    make build CDN=1 UPX=1
     ```
 
 3. Start the server.
