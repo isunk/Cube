@@ -34,6 +34,8 @@ build: clean config # 默认不使用 CDN 资源、不使用 UPX 压缩，即 ma
 
 config:
 	@
+	export LANG=C.UTF-8
+	export version=`grep -horP "monaco-editor/[\d\.]+" ./web | uniq | cut -d "/" -f 2`
 	if [ "$(CDN)" = "1" ]; then # 使用 CDN 资源
 	    sed -i "s#window.location.origin + \"/libs/monaco-editor/$$version/min/vs\"#\"/libs/monaco-editor/$$version/min/vs\"#g" web/editor.html # 由于这里的 URL 需要在 Service Worker 中动态获取，因此需要补充完整的域名
 		sed -i 's#"/libs/#"https://cdn.bootcdn.net/ajax/libs/#g' web/*.html
@@ -48,8 +50,6 @@ config:
 			wget --no-check-certificate "https://cdn.bootcdn.net/ajax/libs/$$name" -P "web/libs/$$(dirname $$name)"
 		done
 		# 下载 monaco-editor 资源
-		export LANG=C.UTF-8
-		export version=`grep -horP "monaco-editor/[\d\.]+" ./web | uniq | cut -d "/" -f 2`
 		if [ ! -d "./web/libs/monaco-editor/$$version/" ]; then
 			mkdir -p "./web/libs/monaco-editor/$$version/"
 			wget --no-check-certificate "https://registry.npm.taobao.org/monaco-editor/-/monaco-editor-$$version.tgz"
