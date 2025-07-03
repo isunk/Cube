@@ -496,7 +496,17 @@
                         this.service.records = this.service.records.filter(i => !this.service.selections.some(s => s == i))
                     },
                     onServiceAdd() {
-                        this.service.dialog.record = {}
+                        this.service.dialog.record = {
+                            active: false,
+                            url: "",
+                            status: 200,
+                            headers: "{}",
+                            body: "{}",
+                            script: "",
+                            settings: JSON.stringify({
+                                time: 0,
+                            }),
+                        }
                         this.service.records.push(this.service.dialog.record)
                         this.service.dialog.visible = true
                     },
