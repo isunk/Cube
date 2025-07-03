@@ -81,6 +81,8 @@ fmt: # 格式化代码
 	fi
 	# 格式化 .md 文件（去除由空格组成的空行）
 	find -name "*.md" | xargs sed -i "s/^[[:space:]]*$$//g"
+	# 格式化 .md 文件，将所有 "\r\n" 替换为 "\r"
+	find -name "*.md" | xargs sed -i "s/\r$$//g"
 
 vet: # 静态代码检查
 	@go vet ./...
