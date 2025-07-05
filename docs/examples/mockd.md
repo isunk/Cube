@@ -175,7 +175,6 @@
         <!-- <script src="https://cdn.bootcdn.net/ajax/libs/vue/3.5.13/vue.global.min.js"></script> -->
         <script src="/libs/element-plus/2.9.1/index.full.min.js"></script>
         <script src="/libs/element-plus-icons-vue/2.3.1/index.iife.min.js"></script>
-        <title>mockd</title>
         <base target="_blank" />
         <style>
             html, body {
@@ -209,7 +208,7 @@
             <el-card style="position: sticky; top: 0; z-index: 999;">
                 <el-row style="padding-bottom: 10px;">
                     <el-select v-model="this['proxy.group.id']" placeholder="Select a group" clearable
-                        @change="(value) => value && onServiceFetch()" style="width: 240px">
+                        @change="(value) => value && onServiceFetch()" style="flex-grow: 1; width: fit-content;">
                         <el-option v-for="group in group.records" :key="group.id" :label="group.name" :value="group.id">
                             <span v-if="group.active" style="font-weight: bolder;">{{ group.name }}</span>
                         </el-option>
@@ -226,7 +225,7 @@
             <el-card>
                 <el-row style="padding-bottom: 10px;">
                     <el-button-group style="padding-left: 5px;">
-                        <el-button :icon="Plus" @click="onServiceAdd"></el-button>
+                        <el-button :icon="Plus" @click="onServiceEdit()"></el-button>
                         <el-upload :auto-upload="false" action="" :on-change="onServiceImport" :show-file-list="false"
                             accept=".har" style="display: none;">
                             <el-button ref="UploadRef"></el-button>
@@ -288,26 +287,32 @@
             </el-dialog>
             <el-dialog v-model="service.dialog.visible" title="Service">
                 <template #header>
-                    <el-input v-model="service.dialog.record.url" placeholder="Please input service url"></el-input>
+                    <el-input v-model="service.dialog.draft.url" placeholder="Please input service url"></el-input>
                 </template>
                 <el-form>
                     <el-tabs tab-position="left" style="height: 500px;">
                         <el-tab-pane label="Body" lazy>
-                            <monaco-editor v-model="service.dialog.record.body" height="500px" language="json"></monaco-editor>
+                            <monaco-editor v-model="service.dialog.draft.body" height="500px" language="json"></monaco-editor>
                         </el-tab-pane>
                         <el-tab-pane label="Headers" lazy>
-                            <monaco-editor v-model="service.dialog.record.headers" height="500px" language="json"></monaco-editor>
+                            <monaco-editor v-model="service.dialog.draft.headers" height="500px" language="json"></monaco-editor>
                         </el-tab-pane>
                         <el-tab-pane label="Status Code">
-                            <el-input v-model.number="service.dialog.record.status" type="text" autocomplete="off"></el-input>
+                            <el-input v-model.number="service.dialog.draft.status" type="text" autocomplete="off"></el-input>
                         </el-tab-pane>
                         <el-tab-pane label="Pre-Response Script" lazy>
-                            <monaco-editor v-model="service.dialog.record.script" height="500px" language="javascript"></monaco-editor>
+                            <monaco-editor v-model="service.dialog.draft.script" height="500px" language="javascript"></monaco-editor>
                         </el-tab-pane>
                         <el-tab-pane label="Settings" lazy>
-                            <monaco-editor v-model="service.dialog.record.settings" height="500px" language="json"></monaco-editor>
+                            <monaco-editor v-model="service.dialog.draft.settings" height="500px" language="json"></monaco-editor>
                         </el-tab-pane>
                     </el-tabs>
+                    <el-form-item style="margin: 12px 0 0 0;">
+                        <div style="width: 100%; display: flex; justify-content: flex-end;">
+                            <el-button type="primary" @click="onServiceDialogSubmit">Submit</el-button>
+                            <el-button @click="service.dialog.visible = !service.dialog.visible">Cancel</el-button>
+                        </div>
+                    </el-form-item>
                 </el-form>
             </el-dialog>
         </div>
@@ -329,6 +334,10 @@
                         },
                         set(value) {
                             this.group.record = this.group.records.find(i => i.id === value) ?? {}
+                            if (!value) {
+                                this.service.records = []
+                            }
+                            document.title = this.group.record.name || "Just mock it"
                         },
                     },
                 },
@@ -349,6 +358,7 @@
                             highlights: [],
                             dialog: {
                                 record: {},
+                                draft: {},
                                 visiable: false,
                             },
                         },
@@ -452,11 +462,9 @@
                         const a = document.createElement("a")
                         a.href = URL.createObjectURL(new Blob([JSON.stringify({
                             log: {
-                                creator: {
-                                    name: "mockd",
-                                    version: "0.1"
-                                },
+                                creator: { name: "mockd", version: "0.1" },
                                 entries: this.service.records.map(i => {
+                                    const settings = JSON.parse(i.settings)
                                     return {
                                         _resourceType: "xhr",
                                         request: {
@@ -464,10 +472,13 @@
                                         },
                                         response: {
                                             status: i.status,
+                                            headers: Object.entries(JSON.parse(i.headers)).map(i => { return { name: i[0], value: i[1] } }),
                                             content: {
                                                 text: i.body,
                                             },
                                         },
+                                        time: settings.time ?? 0,
+                                        script: i.script,
                                     }
                                 })
                             }
@@ -485,7 +496,7 @@
                         }).then(r => {
                             this.service.records = r.data.services
                             this.group.records = r.data.groups
-                            this.group.record = r.data.groups.find(i => i.id === this["proxy.group.id"]) ?? r.data.groups.find(i => i.active)
+                            this["proxy.group.id"] = this["proxy.group.id"] || r.data.groups.find(i => i.active)?.id
                         }).catch(e => {
                             ElMessage.error(e.message)
                         }).finally(() => {
@@ -495,8 +506,8 @@
                     onServiceDelete() {
                         this.service.records = this.service.records.filter(i => !this.service.selections.some(s => s == i))
                     },
-                    onServiceAdd() {
-                        this.service.dialog.record = {
+                    onServiceEdit(record) {
+                        this.service.dialog.draft = {
                             active: false,
                             url: "",
                             status: 200,
@@ -506,11 +517,9 @@
                             settings: JSON.stringify({
                                 time: 0,
                             }),
+                            ...record,
                         }
-                        this.service.records.push(this.service.dialog.record)
-                        this.service.dialog.visible = true
-                    },
-                    onServiceEdit(record, evt) {
+                        ;["headers", "body", "settings"].forEach(n => this.service.dialog.draft[n] = JSON.stringify(JSON.parse(this.service.dialog.draft[n] || "{}"), undefined, 2))
                         this.service.dialog.record = record
                         this.service.dialog.visible = true
                     },
@@ -535,6 +544,19 @@
                             clz += " current-row"
                         }
                         return clz
+                    },
+                    onServiceDialogSubmit() {
+                        if (!this.service.dialog.draft.url) {
+                            ElMessage.warning("Service url is required")
+                            return
+                        }
+                        ;["headers", "body", "settings"].forEach(n => this.service.dialog.draft[n] = JSON.stringify(JSON.parse(this.service.dialog.draft[n] || "{}")))
+                        if (this.service.dialog.record) {
+                            Object.assign(this.service.dialog.record, this.service.dialog.draft)
+                        } else {
+                            this.service.records.push(this.service.dialog.draft)
+                        }
+                        this.service.dialog.visible = false
                     },
                 },
                 mounted() {
@@ -570,12 +592,6 @@
                                         }))
                                     }
                                     return map.get(src)
-                                },
-                                format = (value) => {
-                                    if (props.language === "json") {
-                                        return JSON.stringify(JSON.parse(value), undefined, 2)
-                                    }
-                                    return value
                                 }
                             require("/libs/monaco-editor/0.52.2/min/vs/loader.js")
                                 .then(() => {
@@ -585,7 +601,7 @@
                                     window.require(["vs/editor/editor.main"], () => {
                                         const editor = window.monaco.editor.create(container.value, {
                                             language: props.language,
-                                            value: format(props.modelValue),
+                                            value: props.modelValue,
                                         })
                                         editor.onDidChangeModelContent(() => {
                                             emit("update:modelValue", editor.getValue())
@@ -593,14 +609,12 @@
                                         editor.updateOptions({ readOnly: props.readOnly ?? false })
                                         Vue.watch(() => props.modelValue, (newValue, oldValue) => {
                                             if (newValue !== oldValue && newValue !== editor.getValue()) {
-                                                editor.setValue(format(newValue))
+                                                editor.setValue(newValue)
                                             }
                                         })
                                     })
                                 })
-                            return {
-                                container,
-                            }
+                            return { container }
                         },
                     }
                 },
