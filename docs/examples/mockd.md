@@ -2,17 +2,18 @@
 
 1. Create a controller with url `/service/mockd` and method `Any`.
     ```typescript
-    //?name=mockd&type=controller&url=mockd&method=&tag=mock
+    //?name=mockd&type=controller&url=mockd{name}&method=&tag=mock
     export default (app => app.run.bind(app))(new class {
         private db = $native("db")
 
         public run(ctx: ServiceContext) {
-            const forms = ctx.getForm()
+            const forms = ctx.getForm(),
+                name = ctx.getPathVariables().name
             if ("setup" in forms) {
                 return this.setup()
             }
-            if ("test" in forms) {
-                return this.test(forms.u?.[0], forms.c?.[0], forms.b?.[0] ?? ctx.getBody()?.toString())
+            if ("test" in forms || name) {
+                return this.test(name ?? forms.u?.[0], forms.c?.[0], forms.b?.[0] ?? ctx.getBody()?.toString())
             }
             switch (ctx.getMethod()) {
                 case "GET":
@@ -31,9 +32,9 @@
                 DROP TABLE IF EXISTS MockGroup;
                 CREATE TABLE IF NOT EXISTS MockGroup (
                     Name VARCHAR(64) PRIMARY KEY NOT NULL,
-                    Active BOOLEAN NOT NULL DEFAULT false
+                    Active BOOLEAN NOT NULL DEFAULT false,
+                    Storage TEXT NOT NULL DEFAULT ''
                 );
-
                 DROP TABLE IF EXISTS MockService;
                 CREATE TABLE IF NOT EXISTS MockService (
                     GroupId INTEGER NOT NULL,
@@ -55,7 +56,9 @@
                     s.Headers headers,
                     s.Body body,
                     s.PreResponseScript script,
-                    s.Settings settings
+                    s.Settings settings,
+                    s.GroupId groupId,
+                    g.Storage storage
                 FROM
                     MockService s
                     LEFT JOIN MockGroup g ON s.GroupId = g.rowid
@@ -73,17 +76,23 @@
                 setTimeout(() => { }, settings.time)
             }
             const input = requestBody && JSON.parse(decodeURIComponent(requestBody)),
-                output = JSON.parse(service.body)
+                output = JSON.parse(service.body),
+                session = JSON.parse(service.storage || "{}"),
+                body = service.script && (new Function("input", "output", "session", service.script))(input, output, session) || output,
+                newStorage = JSON.stringify(session)
+            if (newStorage !== service.storage) {
+                this.db.exec(`UPDATE MockGroup SET Storage = ? WHERE rowid = ?`, JSON.stringify(session), service.groupId)
+            }
             return callback ? new ServiceResponse(200, undefined, `mockc.callbacks["${callback}"](${JSON.stringify({
                 status: service.status || 200,
                 headers: service.headers && JSON.parse(service.headers) || {},
-                body: service.script && (new Function("input", "output", service.script))(input, output) || output,
+                body,
             })})`) : new ServiceResponse(service.status || 200, {
                 "Access-Control-Allow-Origin": "*",
                 "Access-Control-Allow-Methods": "*",
                 "Access-Control-Allow-Headers": "*",
                 ...(service.headers && JSON.parse(service.headers)),
-            }, JSON.stringify(service.script && (new Function("input", "output", service.script))(input, output) || output))
+            }, JSON.stringify(body))
         }
 
         public get(groupId: string) {
@@ -667,7 +676,8 @@
     - Using fetch request with src `/service/mockd?test&u=...`
         ```javascript
         window.mockc = (endpoint, url, options) => {
-            return fetch(`${endpoint}/service/mockd?test&u=${encodeURIComponent(url)}`, options)
+            // return fetch(`${endpoint}/service/mockd?test&u=${encodeURIComponent(url)}`, options)
+            return fetch(`${endpoint}/service/mockd${url.replace(/^(?=[^\/])/, "/")}`, options)
         }
         ```
         For example
