@@ -47,12 +47,12 @@ config:
 			if [ -f "web/libs/$$name" ]; then
 				continue
 			fi
-			wget --no-check-certificate "https://cdn.bootcdn.net/ajax/libs/$$name" -P "web/libs/$$(dirname $$name)"
+			wget --tries=5 --timeout=30 --no-check-certificate "https://cdn.bootcdn.net/ajax/libs/$$name" -P "web/libs/$$(dirname $$name)" || (echo "Download failed." && exit 1)
 		done
 		# 下载 monaco-editor 资源
 		if [ ! -d "./web/libs/monaco-editor/$$version/" ]; then
 			mkdir -p "./web/libs/monaco-editor/$$version/"
-			wget --no-check-certificate "https://registry.npm.taobao.org/monaco-editor/-/monaco-editor-$$version.tgz"
+			wget --tries=5 --timeout=30 --no-check-certificate "https://registry.npm.taobao.org/monaco-editor/-/monaco-editor-$$version.tgz" || (echo "Download failed." && exit 1)
 			tar -zxf "monaco-editor-$$version.tgz" -C "./web/libs/monaco-editor/$$version/" --strip-components 1 "package/min"
 			rm monaco-editor-$$version.tgz
 		fi
