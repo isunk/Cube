@@ -78,21 +78,17 @@
             const input = requestBody && JSON.parse(decodeURIComponent(requestBody)),
                 output = JSON.parse(service.body),
                 session = JSON.parse(service.storage || "{}"),
+                status = service.status || 200,
+                headers = service.headers && JSON.parse(service.headers) || {},
                 body = service.script && (new Function("input", "output", "session", service.script))(input, output, session) || output,
                 newStorage = JSON.stringify(session)
             if (newStorage !== service.storage) {
                 this.db.exec(`UPDATE MockGroup SET Storage = ? WHERE rowid = ?`, JSON.stringify(session), service.groupId)
             }
-            return callback ? new ServiceResponse(200, undefined, `mockc.callbacks["${callback}"](${JSON.stringify({
-                status: service.status || 200,
-                headers: service.headers && JSON.parse(service.headers) || {},
-                body,
-            })})`) : new ServiceResponse(service.status || 200, {
-                "Access-Control-Allow-Origin": "*",
-                "Access-Control-Allow-Methods": "*",
-                "Access-Control-Allow-Headers": "*",
-                ...(service.headers && JSON.parse(service.headers)),
-            }, JSON.stringify(body))
+            if (callback) {
+                return new ServiceResponse(200, undefined, `mockc.callbacks["${callback}"](${JSON.stringify({ status, headers, body })})`)
+            }
+            return new ServiceResponse(status, { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "*", "Access-Control-Allow-Headers": "*", ...headers }, JSON.stringify(body))
         }
 
         public get(groupId: string) {
@@ -677,7 +673,7 @@
         ```javascript
         window.mockc = (endpoint, url, options) => {
             // return fetch(`${endpoint}/service/mockd?test&u=${encodeURIComponent(url)}`, options)
-            return fetch(`${endpoint}/service/mockd${url.replace(/^(?=[^\/])/, "/")}`, options)
+            return fetch(`${endpoint}/service/mockd${url.replace(/^https?:\/\/[^\/]+/, "").replace(/^(?=[^\/])/, "/")}`, options)
         }
         ```
         For example
