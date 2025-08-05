@@ -2,6 +2,7 @@ package builtin
 
 import (
 	"net/http"
+	"reflect"
 
 	"cube/internal/util"
 	"github.com/dop251/goja"
@@ -14,13 +15,15 @@ func init() {
 		runtime.Set("ServiceResponse", func(call goja.ConstructorCall) *goja.Object { // 内置构造器不能同时返回 error 类型，否则将会失效
 			output := &ServiceResponse{}
 
+			// 状态码
 			if v, ok := call.Argument(0).Export().(int64); ok {
 				output.status = int(v)
 			} else {
 				panic(runtime.NewTypeError("invalid status: not a number"))
 			}
 
-			if a := call.Argument(1).Export(); a != nil { // header 可以传 null
+			// 消息头
+			if a := call.Argument(1).Export(); a != nil {
 				if m, ok := a.(map[string]interface{}); ok {
 					output.header = make(map[string]string, len(m))
 					for k, v := range m {
@@ -35,6 +38,7 @@ func init() {
 				}
 			}
 
+			// 消息体
 			if v, err := util.ExportGojaValue(call.Argument(2)); v != nil {
 				if err != nil {
 					panic(runtime.NewTypeError(err))
@@ -43,10 +47,12 @@ func init() {
 					output.data = []byte(s)
 				} else if b, ok := v.(Buffer); ok {
 					output.data = []byte(b)
+				} else if b, ok := v.(*Buffer); ok {
+					output.data = []byte(*b)
 				} else if t, ok := v.([]byte); ok {
 					output.data = t
 				} else {
-					panic(runtime.NewTypeError("data should be a string or a byte array"))
+					panic(runtime.NewTypeError("invalid body type: " + reflect.TypeOf(v).String()))
 				}
 			}
 
