@@ -73,17 +73,17 @@
             }
             const settings = service.settings ? JSON.parse(service.settings) : {}
             if (settings.time) {
-                setTimeout(() => { }, settings.time)
+                setTimeout(() => {}, settings.time)
             }
             const input = requestBody && JSON.parse(decodeURIComponent(requestBody)),
-                output = JSON.parse(service.body),
+                output = JSON.parse(service.body || "{}"),
                 session = JSON.parse(service.storage || "{}"),
                 status = service.status || 200,
-                headers = service.headers && JSON.parse(service.headers) || {},
+                headers = JSON.parse(service.headers || "{}"),
                 body = service.script && (new Function("input", "output", "session", service.script))(input, output, session) || output,
-                newStorage = JSON.stringify(session)
-            if (newStorage !== service.storage) {
-                this.db.exec(`UPDATE MockGroup SET Storage = ? WHERE rowid = ?`, JSON.stringify(session), service.groupId)
+                storage = JSON.stringify(session)
+            if (storage !== service.storage) {
+                this.db.exec(`UPDATE MockGroup SET Storage = ? WHERE rowid = ?`, storage, service.groupId)
             }
             if (callback) {
                 return new ServiceResponse(200, undefined, `mockc.callbacks["${callback}"](${JSON.stringify({ status, headers, body })})`)
@@ -112,17 +112,18 @@
                         settings: i.Settings,
                     }
                 }),
-                groups: (this.db.query(`SELECT rowid, Name, Active FROM MockGroup`) ?? []).map(i => {
+                groups: (this.db.query(`SELECT rowid, Name, Active, Storage FROM MockGroup`) ?? []).map(i => {
                     return {
                         id: i.rowid,
                         name: i.Name,
                         active: i.Active,
+                        storage: i.Storage,
                     }
                 }),
             }
         }
 
-        public post(groupId: string, { name, services }) {
+        public post(groupId: string, { name, storage, services }) {
             if (!services.length) {
                 return 0
             }
@@ -130,9 +131,9 @@
                 const group = groupId && tx.query(`SELECT rowid, Name FROM MockGroup where rowid = ?`, groupId)?.pop()
                 if (group) {
                     tx.exec(`DELETE FROM MockService WHERE GroupId = ?`, groupId)
-                    tx.exec(`UPDATE MockGroup SET Name = ?, Active = 1 WHERE rowid = ?`, name, groupId)
+                    tx.exec(`UPDATE MockGroup SET Name = ?, Active = 1, Storage = ? WHERE rowid = ?`, name, storage, groupId)
                 } else {
-                    tx.exec(`INSERT INTO MockGroup (Name, Active) VALUES (?, 1)`, name)
+                    tx.exec(`INSERT INTO MockGroup (Name, Active, Storage) VALUES (?, 1, ?)`, name, storage)
                     groupId = tx.query("SELECT last_insert_rowid() id")[0].id
                 }
                 tx.exec(`INSERT INTO MockService (GroupId, Active, URL, StatusCode, Headers, Body, PreResponseScript, Settings) VALUES ${services.map(() => "(?, ?, ?, ?, ?, ?, ?, ?)").join(",")}`, ...services.map(s => [
@@ -175,10 +176,10 @@
 
     <head>
         <meta charset="UTF-8">
-        <link rel="stylesheet" href="/libs/element-plus/2.9.1/index.min.css" />
-        <script src="/libs/vue/3.5.13/vue.global.prod.min.js"></script>
-        <!-- <script src="https://cdn.bootcdn.net/ajax/libs/vue/3.5.13/vue.global.min.js"></script> -->
-        <script src="/libs/element-plus/2.9.1/index.full.min.js"></script>
+        <link rel="stylesheet" href="/libs/element-plus/2.10.5/index.min.css" />
+        <script src="/libs/vue/3.5.18/vue.global.prod.min.js"></script>
+        <!-- <script src="https://cdn.bootcdn.net/ajax/libs/vue/3.5.18/vue.global.min.js"></script> -->
+        <script src="/libs/element-plus/2.10.5/index.full.min.js"></script>
         <script src="/libs/element-plus-icons-vue/2.3.1/index.iife.min.js"></script>
         <base target="_blank" />
         <style>
@@ -220,7 +221,7 @@
                     </el-select>
                     <div style="margin-left: auto; display: inline-flex;">
                         <el-button-group style="padding-left: 5px;">
-                            <el-button :icon="Check" @click="onBeforeGroupSave" v-if="service.records.length"></el-button>
+                            <el-button :icon="Check" @click="onGroupEdit" v-if="service.records.length"></el-button>
                             <el-button :icon="Delete" @click="onGroupDelete" v-if="group.record?.id"></el-button>
                         </el-button-group>
                     </div>
@@ -284,11 +285,21 @@
             </el-card>
             <el-dialog v-model="group.dialog.visible">
                 <template #header>
-                    <el-input v-model="group.dialog.record.name" placeholder="Please input group name"></el-input>
+                    <el-input v-model="group.dialog.draft.name" placeholder="Please input group name"></el-input>
                 </template>
-                <template #footer>
-                    <el-button @click="onGroupSave" type="primary">Confirm</el-button>
-                </template>
+                <el-form>
+                    <el-tabs tab-position="left" style="height: 500px;">
+                        <el-tab-pane label="Storage" lazy>
+                            <monaco-editor v-model="group.dialog.draft.storage" height="500px" language="json"></monaco-editor>
+                        </el-tab-pane>
+                    </el-tabs>
+                    <el-form-item style="margin: 12px 0 0 0;">
+                        <div style="width: 100%; display: flex; justify-content: flex-end;">
+                            <el-button @click="onGroupDialogSubmit" type="primary">Submit</el-button>
+                            <el-button @click="group.dialog.visible = !group.dialog.visible">Cancel</el-button>
+                        </div>
+                    </el-form-item>
+                </el-form>
             </el-dialog>
             <el-dialog v-model="service.dialog.visible" title="Service">
                 <template #header>
@@ -352,7 +363,7 @@
                             record: {},
                             records: [],
                             dialog: {
-                                record: {},
+                                draft: {},
                                 visiable: false,
                             },
                         },
@@ -362,8 +373,8 @@
                             selections: [],
                             highlights: [],
                             dialog: {
-                                record: {},
                                 draft: {},
+                                record: {},
                                 visiable: false,
                             },
                         },
@@ -373,22 +384,24 @@
                     }
                 },
                 methods: {
-                    onBeforeGroupSave() {
-                        this.group.dialog.record = {
+                    onGroupEdit(record) {
+                        this.group.dialog.draft = {
                             name: new Date().toISOString().replace(/[-T:\.Z]/g, ""),
                             ...this.group.record,
                         }
+                        ;["storage"].forEach(n => this.group.dialog.draft[n] = JSON.stringify(JSON.parse(this.group.dialog.draft[n] || "{}"), undefined, 2))
                         this.group.dialog.visible = true
                     },
-                    onGroupSave() {
-                        if (!this.group.dialog.record.name) {
+                    onGroupDialogSubmit() {
+                        if (!this.group.dialog.draft.name) {
                             ElMessage.warning("Group name is required")
                             return
                         }
                         fetch(`/service/mockd?g=${this["proxy.group.id"] ?? ""}`, {
                             method: "POST",
                             body: JSON.stringify({
-                                name: this.group.dialog.record.name,
+                                name: this.group.dialog.draft.name,
+                                storage: JSON.stringify(JSON.parse(this.group.dialog.draft.storage || "{}")),
                                 services: this.service.records,
                             })
                         }).then(r => {
@@ -435,7 +448,15 @@
                         const that = this,
                             reader = new FileReader()
                         reader.onload = function () {
-                            const records = JSON.parse(this.result).log.entries.filter(i => i._resourceType === "xhr").map(i => {
+                            const { group, entries } = JSON.parse(this.result).log
+                            if (group) {
+                                that.group.record.name = that.group.record.name || group.name
+                                that.group.record.storage = JSON.stringify({
+                                    ...JSON.parse(group.storage),
+                                    ...JSON.parse(that.group.record.storage || "{}"),
+                                })
+                            }
+                            const records = entries.filter(i => i._resourceType === "xhr").map(i => {
                                 return {
                                     active: false,
                                     url: i.request.url.replace(/^https?:\/\/[^\/]+/, "").replace(/\?.*$/, ""),
@@ -468,6 +489,7 @@
                         a.href = URL.createObjectURL(new Blob([JSON.stringify({
                             log: {
                                 creator: { name: "mockd", version: "0.1" },
+                                group: this.group.record,
                                 entries: this.service.records.map(i => {
                                     const settings = JSON.parse(i.settings)
                                     return {
