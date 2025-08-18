@@ -20,10 +20,10 @@ func HandleResource(w http.ResponseWriter, r *http.Request) {
 	}
 
 	switch lang {
-	case "javascript":
-		w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
 	case "html":
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	case "javascript":
+		w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
 	}
 
 	Success(w, content)
