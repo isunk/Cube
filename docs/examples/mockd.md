@@ -256,6 +256,7 @@
                                 <el-link type="primary" @click="onServiceEdit(scope.row)">
                                     {{ scope.row.url }}
                                 </el-link>
+                                <el-text v-if="scope.row.settings.name" type="info" style="margin-left: 8px;">{{ scope.row.settings.name }}</el-text>
                             </template>
                         </el-table-column>
                         <el-table-column label="Status Code" width="120">
@@ -314,13 +315,20 @@
                             <monaco-editor v-model="service.dialog.draft.headers" height="500px" language="json"></monaco-editor>
                         </el-tab-pane>
                         <el-tab-pane label="Status Code">
-                            <el-input v-model.number="service.dialog.draft.status" type="text" autocomplete="off"></el-input>
+                            <el-input v-model.number="service.dialog.draft.status" type="number" autocomplete="off"></el-input>
                         </el-tab-pane>
                         <el-tab-pane label="Pre-Response Script" lazy>
                             <monaco-editor v-model="service.dialog.draft.script" height="500px" language="javascript"></monaco-editor>
                         </el-tab-pane>
                         <el-tab-pane label="Settings" lazy>
-                            <monaco-editor v-model="service.dialog.draft.settings" height="500px" language="json"></monaco-editor>
+                            <el-form label-width="auto" style="max-width: 360px;">
+                                <el-form-item label="Name">
+                                    <el-input v-model="service.dialog.draft.settings.name"></el-input>
+                                </el-form-item>
+                                <el-form-item label="Time">
+                                    <el-input v-model="service.dialog.draft.settings.time"  type="number"></el-input>
+                                </el-form-item>
+                            </el-form>
                         </el-tab-pane>
                     </el-tabs>
                     <el-form-item style="margin: 12px 0 0 0;">
@@ -402,7 +410,12 @@
                             body: JSON.stringify({
                                 name: this.group.dialog.draft.name,
                                 storage: JSON.stringify(JSON.parse(this.group.dialog.draft.storage || "{}")),
-                                services: this.service.records,
+                                services: this.service.records.map(i => {
+                                    return {
+                                        ...i,
+                                        settings: JSON.stringify(i.settings),
+                                    }
+                                }),
                             })
                         }).then(r => {
                             if (r.status !== 200) {
@@ -467,9 +480,10 @@
                                     }, {})),
                                     body: i.response.content?.text,
                                     script: "",
-                                    settings: JSON.stringify({
+                                    settings: i.settings ?? {
                                         time: i.time,
-                                    }),
+                                        name: "",
+                                    },
                                 }
                             })
                             for (const record of records) {
@@ -491,7 +505,6 @@
                                 creator: { name: "mockd", version: "0.1" },
                                 group: this.group.record,
                                 entries: this.service.records.map(i => {
-                                    const settings = JSON.parse(i.settings)
                                     return {
                                         _resourceType: "xhr",
                                         request: {
@@ -504,7 +517,8 @@
                                                 text: i.body,
                                             },
                                         },
-                                        time: settings.time ?? 0,
+                                        time: i.settings.time ?? 0,
+                                        settings: i.settings,
                                         script: i.script,
                                     }
                                 })
@@ -521,7 +535,12 @@
                             }
                             return r.json()
                         }).then(r => {
-                            this.service.records = r.data.services
+                            this.service.records = r.data.services.map(i => {
+                                return {
+                                    ...i,
+                                    settings: JSON.parse(i.settings),
+                                }
+                            })
                             this.group.records = r.data.groups
                             this["proxy.group.id"] = this["proxy.group.id"] || r.data.groups.find(i => i.active)?.id
                         }).catch(e => {
@@ -541,12 +560,13 @@
                             headers: "{}",
                             body: "{}",
                             script: "",
-                            settings: JSON.stringify({
+                            settings: {
+                                name: "",
                                 time: 0,
-                            }),
+                            },
                             ...record,
                         }
-                        ;["headers", "body", "settings"].forEach(n => this.service.dialog.draft[n] = JSON.stringify(JSON.parse(this.service.dialog.draft[n] || "{}"), undefined, 2))
+                        ;["headers", "body"].forEach(n => this.service.dialog.draft[n] = JSON.stringify(JSON.parse(this.service.dialog.draft[n] || "{}"), undefined, 2))
                         this.service.dialog.record = record
                         this.service.dialog.visible = true
                     },
@@ -577,7 +597,7 @@
                             ElMessage.warning("Service url is required")
                             return
                         }
-                        ;["headers", "body", "settings"].forEach(n => this.service.dialog.draft[n] = JSON.stringify(JSON.parse(this.service.dialog.draft[n] || "{}")))
+                        ;["headers", "body"].forEach(n => this.service.dialog.draft[n] = JSON.stringify(JSON.parse(this.service.dialog.draft[n] || "{}")))
                         if (this.service.dialog.record) {
                             Object.assign(this.service.dialog.record, this.service.dialog.draft)
                         } else {
