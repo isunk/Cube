@@ -34,7 +34,7 @@ func HandleSource(w http.ResponseWriter, r *http.Request) {
 	case http.MethodDelete:
 		err = handleSourceDelete(r)
 	case http.MethodPut:
-		err = handleSourcePut(r)
+		data, err = handleSourcePut(r)
 	case http.MethodGet:
 		data, returnless, err = handleSourceGet(w, r)
 	case "EVAL":
@@ -172,58 +172,72 @@ func handleSourceDelete(r *http.Request) error {
 	return nil
 }
 
-func handleSourcePut(r *http.Request) error {
+func handleSourcePut(r *http.Request) (interface{}, error) {
 	// 获取 source 对象
 	var record map[string]interface{}
 	if err := util.UnmarshalWithIoReader(r.Body, &record); err != nil {
-		return err
+		return nil, err
 	}
 
+	name, stype, url, cron, status, mdate := record["name"], record["type"], record["url"], record["cron"], record["status"], record["last_modified_date"]
 	// 校验类型和名称
-	name, stype, url, cron, status := record["name"], record["type"], record["url"], record["cron"], record["status"]
 	if name == nil {
-		return errors.New("name is required")
+		return nil, errors.New("name is required")
 	}
 	if stype == nil {
-		return errors.New("type is required")
+		return nil, errors.New("type is required")
 	}
 	// 校验 url 不能重复
 	if url != nil && (stype == "controller" || stype == "resource") {
 		var count int
 		if err := Db.QueryRow("select count(1) from source where type = ? and url = ? and active = true and name != ?", stype, url, name).Scan(&count); err != nil {
-			return err
+			return nil, err
 		}
 		if count > 0 {
-			return errors.New("url already existed")
+			return nil, errors.New("url already existed")
 		}
 	}
 	// 校验 cron 表达式
 	if cron != nil && stype == "crontab" {
 		if _, err := ParseCron(cron.(string)); err != nil {
-			return err
+			return nil, err
+		}
+	}
+	// 校验最后修改时间（版本号）
+	if mdate != nil {
+		var rdate string
+		if err := Db.QueryRow("select last_modified_date from source where name = ? and type = ?", name, stype).Scan(&rdate); err != nil {
+			return nil, err
+		}
+		if rdate == "" {
+			return nil, errors.New("source does not existed")
+		}
+		if mdate != strings.Replace(strings.Replace(rdate, "T", " ", 1), "Z", "", 1) {
+			return nil, errors.New("source version conflict")
 		}
 	}
 
-	// 修改
-	setsen, params := "", []interface{}{}
+	// 初始化修改字段
+	sets, params := "", []interface{}{}
 	for _, c := range []string{"content", "compiled", "active", "method", "url", "cron", "tag"} {
 		if v, ok := record[c]; ok {
-			setsen += ", " + c + " = ?"
+			sets += ", " + c + " = ?"
 			params = append(params, v)
 		}
 	}
-	res, err := Db.Exec("update source set last_modified_date = datetime('now', 'localtime')"+setsen+" where name = ? and type = ?", append(params, []interface{}{name, stype}...)...)
+	// 执行修改
+	res, err := Db.Exec("update source set last_modified_date = datetime('now', 'localtime')"+sets+" where name = ? and type = ?", append(params, []interface{}{name, stype}...)...)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if count, _ := res.RowsAffected(); count == 0 {
-		return errors.New("source does not existed")
+		return nil, errors.New("source does not existed")
 	}
 
 	// 查询更新后的记录
 	var source model.Source
-	if err := Db.QueryRow("select name, type, lang, active, method, url, cron, tag from source where name = ? and type = ?", name, stype).Scan(&source.Name, &source.Type, &source.Lang, &source.Active, &source.Method, &source.Url, &source.Cron, &source.Tag); err != nil {
-		return err
+	if err := Db.QueryRow("select name, type, lang, active, method, url, cron, tag, last_modified_date from source where name = ? and type = ?", name, stype).Scan(&source.Name, &source.Type, &source.Lang, &source.Active, &source.Method, &source.Url, &source.Cron, &source.Tag, &source.LastModifiedDate); err != nil {
+		return nil, err
 	}
 
 	switch source.Type {
@@ -233,7 +247,6 @@ func handleSourcePut(r *http.Request) error {
 		} else {
 			delete(Cache.Modules, "./"+source.Name)
 		}
-
 	case "controller":
 		if source.Active {
 			Cache.SetRoute(source.Name, source.Url) // 更新路由
@@ -264,7 +277,9 @@ func handleSourcePut(r *http.Request) error {
 		delete(Cache.Modules, "./daemon/"+source.Name)
 	}
 
-	return nil
+	return map[string]interface{}{
+		"last_modified_date": source.LastModifiedDate,
+	}, nil
 }
 
 func handleSourceGet(w http.ResponseWriter, r *http.Request) (interface{}, bool, error) {

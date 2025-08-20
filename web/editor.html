@@ -107,6 +107,7 @@
                 loaded: false, // 源码是否已加载
                 broadcaster: null, // 广播频道，用于跨页面通讯，如修改 module 源码时通知其它编辑器页面实时更新依赖
                 abortController: null, // 中断控制器，用于主动中断 fetch 请求
+                version: "", // 版本号，即最后一次修改时间
             }),
 
             // 请求入参
@@ -302,31 +303,9 @@
                             this.alert("Source has not been loaded yet", "error")
                             return
                         }
-
                         const content = editor.getValue(),
                             compiled = editor.getModel().getLanguageId() !== "typescript" ? "" : this.compile(content, this.input.name)
-
-                        fetch("source", {
-                            method: "PUT",
-                            body: JSON.stringify({
-                                name: this.input.name,
-                                type: this.input.type,
-                                content,
-                                compiled,
-                            }),
-                        }).then(r => r.json()).then(r => {
-                            if (r.code === "0") {
-                                this.alert("Saved successfully", "success")
-                                // 如果是 module 类型，则发送广播消息，通知其它页面更新依赖
-                                this.broadcaster && this.input.type === "module" && this.broadcaster.postMessage({
-                                    action: "update",
-                                    name: this.input.name,
-                                    type: this.input.type,
-                                })
-                            } else {
-                                this.alert(r.message, "error")
-                            }
-                        })
+                        this.submit(content, compiled)
                         return false
                     }
                 }
@@ -367,6 +346,50 @@
                 })?.outputText
             },
 
+            // 提交
+            submit(content, compiled, version = this.vdata.version) {
+                fetch("source", {
+                    method: "PUT",
+                    body: JSON.stringify({
+                        name: this.input.name,
+                        type: this.input.type,
+                        content,
+                        compiled,
+                        ...(version && {
+                            last_modified_date: version,
+                        }),
+                    }),
+                }).then(r => r.json()).then(r => {
+                    if (r.code === "0") {
+                        // 更新版本号
+                        this.vdata.version = r.data.last_modified_date
+                        this.alert("Saved successfully", "success")
+                        // 如果是 module 类型，则发送广播消息，通知其它页面更新依赖
+                        this.broadcaster && this.input.type === "module" && this.broadcaster.postMessage({
+                            action: "update",
+                            name: this.input.name,
+                            type: this.input.type,
+                        })
+                    } else if (r.message === "source version conflict") {
+                        swal("Source version is conflict, continue to submit?", {
+	                        buttons: {
+		                        cancel: true,
+		                        submit: true,
+	                        },
+                        }).then(value => {
+	                        if (!value) {
+		                        return
+	                        }
+	                        this.submit(content, compiled, "")
+                        })
+                    } else {
+                        this.alert(r.message, "error")
+                    }
+                }).catch(e => {
+                    this.alert(e.message, "error")
+                })
+            },
+
             // 提示
             alert(message, level = "warning") {
                 swal(message, "", level)
@@ -390,16 +413,19 @@
             // 初始化
             async mount() {
                 if (!this.input.name) {
-                    this.alert("name is required")
+                    this.alert("name is required", "error")
                     return
                 }
 
                 // 根据 name 和 type 查询 source
                 const source = (await fetch(`source?name=${this.input.name}&type=${this.input.type}&content`).then(r => r.json()).then(r => r.data.sources) || []).pop()
                 if (!source) {
-                    this.alert(`${this.input.type} "${this.input.name}" does not existed`)
+                    this.alert(`${this.input.type} "${this.input.name}" does not existed`, "error")
                     return
                 }
+
+                // 更新版本号
+                this.vdata.version = source.last_modified_date
 
                 // 渲染页面标题
                 document.title = this.input.name + " - " + this.input.type
