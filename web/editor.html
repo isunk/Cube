@@ -104,7 +104,7 @@
                 })
             })({
                 readonly: false, // 源码状态，默认可写
-                loaded: false, // 源码是否已加载
+                loading: true, // 是否加载中，如果是加载中则不可提交源码
                 broadcaster: null, // 广播频道，用于跨页面通讯，如修改 module 源码时通知其它编辑器页面实时更新依赖
                 abortController: null, // 中断控制器，用于主动中断 fetch 请求
                 version: "", // 版本号，即最后一次修改时间
@@ -299,13 +299,15 @@
                     const keyCode = e.keyCode || e.which || e.charCode,
                         ctrlKey = e.ctrlKey || e.metaKey
                     if (ctrlKey && keyCode === 83) { // Ctrl + S
-                        if (!this.vdata.loaded) { // 如果没有加载完禁止保存提交，防止被覆盖
-                            this.alert("Source has not been loaded yet", "error")
+                        if (this.vdata.loading) { // 如果没有加载完禁止保存提交，防止被覆盖
                             return
                         }
+                        this.vdata.loading = true
                         const content = editor.getValue(),
                             compiled = editor.getModel().getLanguageId() !== "typescript" ? "" : this.compile(content, this.input.name)
-                        this.submit(content, compiled)
+                        this.submit(content, compiled).finally(() => {
+                            this.vdata.loading = false
+                        })
                         return false
                     }
                 }
@@ -348,7 +350,7 @@
 
             // 提交
             submit(content, compiled, version = this.vdata.version) {
-                fetch("source", {
+                return fetch("source", {
                     method: "PUT",
                     body: JSON.stringify({
                         name: this.input.name,
@@ -370,21 +372,17 @@
                             name: this.input.name,
                             type: this.input.type,
                         })
-                    } else if (r.message === "source version conflict") {
-                        swal("Source version is conflict, continue to submit?", {
+                        return
+                    }
+                    if (r.message === "source version conflict") {
+                        return swal("Source version is conflict, continue to submit?", {
 	                        buttons: {
 		                        cancel: true,
 		                        submit: true,
 	                        },
-                        }).then(value => {
-	                        if (!value) {
-		                        return
-	                        }
-	                        this.submit(content, compiled, "")
-                        })
-                    } else {
-                        this.alert(r.message, "error")
+                        }).then(value => value && this.submit(content, compiled, ""))
                     }
+                    throw new Error(r.message)
                 }).catch(e => {
                     this.alert(e.message, "error")
                 })
@@ -437,7 +435,7 @@
                     this.vdata.readonly = true
                     editor.updateOptions({ readOnly: true, })
                 }
-                this.vdata.loaded = true
+                this.vdata.loading = false
             },
         }).mount()
     </script>
