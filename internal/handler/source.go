@@ -270,28 +270,27 @@ func handleSourcePut(r *http.Request) error {
 func handleSourceGet(w http.ResponseWriter, r *http.Request) (interface{}, bool, error) {
 	// 解析 URL 入参
 	p := &util.QueryParams{Values: r.URL.Query()}
+	// 初始化查询参数
 	name, stype := p.GetOrDefault("name", "%"), p.GetOrDefault("type", "%")
 	tag := p.GetOrDefault("tag", "")
 	from, size := p.GetIntOrDefault("from", 0), p.GetIntOrDefault("size", 10)
 	sort := p.Get("sort")
 
-	// 初始化排序字段
+	// 初始化查询条件
+	wheres, params := "name like ? and type like ?", []interface{}{name, stype}
+	// 构造标签查询条件
+	if tag != "" {
+		wheres += " and (1 != 1"
+		for _, v := range strings.Split(tag, ",") {
+			wheres += " or tag like ?"
+			params = append(params, "%"+v+"%")
+		}
+		wheres += ")"
+	}
+	// 初始化排序条件
 	orders := "rowid desc"
 	if ok, _ := regexp.MatchString("^(rowid|name|last_modified_date) (asc|desc)$", sort); ok {
 		orders = sort
-	}
-
-	// 初始化查询条件
-	condition, params := "name like ? and type like ?", []interface{}{name, stype}
-
-	// 构造标签查询条件
-	if tag != "" {
-		condition += " and (1 != 1"
-		for _, v := range strings.Split(tag, ",") {
-			condition += " or tag like ?"
-			params = append(params, "%"+v+"%")
-		}
-		condition += " )"
 	}
 
 	// 初始化返回对象
@@ -302,7 +301,7 @@ func handleSourceGet(w http.ResponseWriter, r *http.Request) (interface{}, bool,
 	data.Sources = make([]model.Source, 0, size)
 
 	// 查询总数
-	if err := Db.QueryRow("select count(1) from source where "+condition, params...).Scan(&data.Total); err != nil { // 调用 QueryRow 方法后，须调用 Scan 方法，否则连接将不会被释放
+	if err := Db.QueryRow("select count(1) from source where "+wheres, params...).Scan(&data.Total); err != nil { // 调用 QueryRow 方法后，须调用 Scan 方法，否则连接将不会被释放
 		return data, false, err
 	}
 
@@ -315,7 +314,7 @@ func handleSourceGet(w http.ResponseWriter, r *http.Request) (interface{}, bool,
 		columns = strings.Replace(columns, ", content", ", '' content", 1)
 		columns = strings.Replace(columns, ", compiled", ", '' compiled", 1)
 	}
-	rows, err := Db.Query("select "+columns+" from source where "+condition+" order by "+orders+" limit ?, ?", append(params, []interface{}{from, size}...)...)
+	rows, err := Db.Query("select "+columns+" from source where "+wheres+" order by "+orders+" limit ?, ?", append(params, []interface{}{from, size}...)...)
 	if err != nil {
 		return data, false, err
 	}
@@ -329,7 +328,8 @@ func handleSourceGet(w http.ResponseWriter, r *http.Request) (interface{}, bool,
 		data.Sources = append(data.Sources, source)
 	}
 
-	if p.Has("bulk") { // 导出为文件
+	// 是否导出为文件
+	if p.Has("bulk") {
 		buf := &bytes.Buffer{}
 		enc := json.NewEncoder(buf)
 		enc.SetEscapeHTML(false)
