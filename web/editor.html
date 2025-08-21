@@ -436,7 +436,7 @@
                     editor.updateOptions({ readOnly: true, })
                 }
                 this.vdata.loading = false
-                document.querySelector("#btn").style.display = "unset"
+                document.querySelector("#btn").style.removeProperty("display")
             },
         }).mount()
     </script>
