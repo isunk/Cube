@@ -299,7 +299,7 @@
                     const keyCode = e.keyCode || e.which || e.charCode,
                         ctrlKey = e.ctrlKey || e.metaKey
                     if (ctrlKey && keyCode === 83) { // Ctrl + S
-                        if (this.vdata.loading) { // 如果没有加载完禁止保存提交，防止被覆盖
+                        if (this.vdata.readonly || this.vdata.loading) { // 如果没有加载完禁止保存提交，防止被覆盖
                             return
                         }
                         this.vdata.loading = true
