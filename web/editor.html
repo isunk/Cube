@@ -48,7 +48,7 @@
 
 <body>
     <div id="container"></div>
-    <div id="btn">
+    <div id="btn" style="display: none;">
         <svg style="display: none;" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 512 512"><path d="M336 112a80 80 0 0 0-160 0v96" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32"></path><rect x="96" y="208" width="320" height="272" rx="48" ry="48" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32"></rect></svg>
         <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 512 512"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32" d="M416 128L192 384l-96-96"></path></svg>
     </div>
@@ -103,7 +103,7 @@
                     },
                 })
             })({
-                readonly: false, // 源码状态，默认可写
+                readonly: false, // 源码是否只读
                 loading: true, // 是否加载中，如果是加载中则不可提交源码
                 broadcaster: null, // 广播频道，用于跨页面通讯，如修改 module 源码时通知其它编辑器页面实时更新依赖
                 abortController: null, // 中断控制器，用于主动中断 fetch 请求
@@ -436,6 +436,7 @@
                     editor.updateOptions({ readOnly: true, })
                 }
                 this.vdata.loading = false
+                document.querySelector("#btn").style.display = "unset"
             },
         }).mount()
     </script>
