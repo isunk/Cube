@@ -34,10 +34,14 @@ build: clean config # 默认不使用 CDN 资源、不使用 UPX 压缩，即 ma
 
 config:
 	@
+	# 脚本在遇到任何命令返回非零退出状态（即命令执行失败）时，立即退出整个脚本的执行
+	set -e
+	# 设置 UTF-8 编码格式
 	export LANG=C.UTF-8
+	# 获取 monaco-editor 版本号
 	export version=`grep -horP "monaco-editor/[\d\.]+" ./web | uniq | cut -d "/" -f 2`
 	if [ "$(CDN)" = "1" ]; then # 使用 CDN 资源
-	    sed -i "s#window.location.origin + \"/libs/monaco-editor/$$version/min/vs\"#\"/libs/monaco-editor/$$version/min/vs\"#g" web/editor.html # 由于这里的 URL 需要在 Service Worker 中动态获取，因此需要补充完整的域名
+		sed -i "s#window.location.origin + \"/libs/monaco-editor/$$version/min/vs\"#\"/libs/monaco-editor/$$version/min/vs\"#g" web/editor.html # 由于这里的 URL 需要在 Service Worker 中动态获取，因此需要补充完整的域名
 		sed -i 's#"/libs/#"https://cdn.bootcdn.net/ajax/libs/#g' web/*.html
 	else # 构建一个不依赖于 CDN 的版本，依赖的 js、css 等库文件将下载至本地 web/libs 目录下
 		# 下载除 monaco-editor 外所有 css、js 资源文件
@@ -47,7 +51,11 @@ config:
 			if [ -f "web/libs/$$name" ]; then
 				continue
 			fi
-			wget --tries=5 --timeout=30 --no-check-certificate "https://cdn.bootcdn.net/ajax/libs/$$name" -P "web/libs/$$(dirname $$name)" || (echo "Download failed." && exit 1)
+			if wget --tries=5 --timeout=30 --no-check-certificate "https://cdn.bootcdn.net/ajax/libs/$$name" -P "web/libs/$$(dirname $$name)"; then
+				continue
+			fi
+			echo "Download failed."
+			exit 1
 		done
 		# 下载 monaco-editor 资源
 		if [ ! -d "./web/libs/monaco-editor/$$version/" ]; then
