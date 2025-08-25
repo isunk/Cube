@@ -19,7 +19,7 @@ jobs:
         with:
           path: |
             ~/go/pkg/mod
-            ~/cube/web/libs
+            web/libs
           key: ${{ runner.os }}
       - name: Set up Upx
         run: |
@@ -61,7 +61,7 @@ jobs:
         with:
           path: |
             ~/go/pkg/mod
-            ~/cube/web/libs
+            web/libs
           key: ${{ runner.os }}
       - name: Set up Upx
         run: |
@@ -109,7 +109,7 @@ jobs:
         with:
           path: |
             ~/go/pkg/mod
-            ~/cube/web/libs
+            web/libs
           key: ${{ runner.os }}
       - name: Build
         run: |

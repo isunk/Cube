@@ -52,7 +52,6 @@ config:
 				continue
 			fi
 			if wget --tries=5 --timeout=30 --no-check-certificate "https://cdn.bootcdn.net/ajax/libs/$$name" -P "web/libs/$$(dirname $$name)"; then
-			    pwd
 				continue
 			fi
 			echo "Download failed."
