@@ -7,21 +7,23 @@
         private db = $native("db")
 
         public run(ctx: ServiceContext) {
-            const forms = ctx.getForm(),
+            const forms = Object.entries(ctx.getForm()).reduce((p, c) => { p[c[0]] = c[1]?.[0]; return p; }, {}) as { u: string; c: string; b: string; g: string; s: string; },
                 name = ctx.getPathVariables().name
             if ("setup" in forms) {
                 return this.setup()
             }
             if ("test" in forms || name) {
-                return this.test(name ?? forms.u?.[0], forms.c?.[0], forms.b?.[0] ?? ctx.getBody()?.toString())
+                return this.test(name || forms.u, forms.c, forms.b ?? ctx.getBody()?.toString())
             }
             switch (ctx.getMethod()) {
-                case "GET":
-                    return this.get(forms.g?.[0])
                 case "POST":
-                    return this.post(forms.g?.[0], ctx.getBody().toJson())
+                    return this.post(ctx.getBody().toJson())
                 case "DELETE":
-                    return this.delete(forms.g?.[0], forms.s?.[0])
+                    return this.delete(forms.g, forms.s)
+                case "PUT":
+                    return this.put(ctx.getBody().toJson())
+                case "GET":
+                    return this.get(forms.g)
                 default:
                     return new ServiceResponse(405)
             }
@@ -73,7 +75,7 @@
             }
             const settings = service.settings ? JSON.parse(service.settings) : {}
             if (settings.time) {
-                setTimeout(() => {}, settings.time)
+                setTimeout(() => { }, settings.time)
             }
             const input = requestBody && JSON.parse(decodeURIComponent(requestBody)),
                 output = JSON.parse(service.body || "{}"),
@@ -91,15 +93,69 @@
             return new ServiceResponse(status, { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "*", "Access-Control-Allow-Headers": "*", ...headers }, JSON.stringify(body))
         }
 
-        public get(groupId: string) {
-            let wheres = "WHERE GroupId in (SELECT rowid FROM MockGroup WHERE Active = 1)",
-                params = []
-            if (groupId) {
-                wheres = "WHERE GroupId = ?"
-                params.push(groupId)
+        public post(input: Group | Service | Service[]) {
+            if (!Array.isArray(input)) {
+                if (("group" in input)) {
+                    input = [input]
+                } else {
+                    this.db.transaction(tx => {
+                        input = input as Group
+                        this.db.exec(`INSERT INTO MockGroup (Name, Active, Storage) VALUES (?, ?, ?)`, input.name, input.active, input.storage)
+                        if (input.active) {
+                            const id = tx.query("SELECT last_insert_rowid() id")[0].id
+                            tx.exec(`UPDATE MockGroup SET Active = 0 WHERE rowid <> ?`, id)
+                        }
+                    })
+                    return
+                }
             }
-            return {
-                services: (this.db.query(`SELECT rowid, GroupId, Active, URL, StatusCode, Headers, Body, PreResponseScript, Settings FROM MockService ${wheres}`, ...params) ?? []).map(i => {
+            return this.db.exec(`INSERT INTO MockService (GroupId, Active, URL, StatusCode, Headers, Body, PreResponseScript, Settings) VALUES ${input.map(() => "(?, ?, ?, ?, ?, ?, ?, ?)").join(",")}`, ...input.map(s => [
+                s.group,
+                s.active,
+                s.url,
+                s.status,
+                s.headers,
+                s.body,
+                s.script,
+                s.settings,
+            ]).flat())
+        }
+
+        public delete(group: string, services: string) {
+            if (services !== undefined) {
+                return this.db.exec(`DELETE FROM MockService WHERE rowid in (${services.split(",").map(() => "?").join(",")})`, ...(services.split(",")))
+            }
+            if (group !== undefined) {
+                let effect = 0
+                this.db.transaction(tx => {
+                    tx.exec(`DELETE FROM MockService WHERE GroupId = ?`, group)
+                    effect = tx.exec(`DELETE FROM MockGroup WHERE rowid = ?`, group)
+                })
+                return effect
+            }
+            return 0
+        }
+
+        public put(input: Group | Service) {
+            if ("group" in input) {
+                return this.db.exec("UPDATE MockService SET GroupId = ?, Active = ?, URL = ?, StatusCode = ?, Headers = ?, Body = ?, PreResponseScript = ?, Settings = ? WHERE rowid = ?",
+                    input.group,
+                    input.active,
+                    input.url,
+                    input.status,
+                    input.headers,
+                    input.body,
+                    input.script,
+                    input.settings,
+                    input.id,
+                )
+            }
+            return this.db.exec(`UPDATE MockGroup SET Name = ?, Active = ?, Storage = ? WHERE rowid = ?`, input.name, input.active, input.storage, input.id)
+        }
+
+        public get(group?: string): Group[] | Service[] {
+            if (group) {
+                return this.db.query(`SELECT rowid, GroupId, Active, URL, StatusCode, Headers, Body, PreResponseScript, Settings FROM MockService WHERE GroupId = ?`, group).map(i => {
                     return {
                         id: i.rowid,
                         group: i.GroupId,
@@ -111,61 +167,37 @@
                         script: i.PreResponseScript,
                         settings: i.Settings,
                     }
-                }),
-                groups: (this.db.query(`SELECT rowid, Name, Active, Storage FROM MockGroup`) ?? []).map(i => {
-                    return {
-                        id: i.rowid,
-                        name: i.Name,
-                        active: i.Active,
-                        storage: i.Storage,
-                    }
-                }),
-            }
-        }
-
-        public post(groupId: string, { name, storage, services }) {
-            if (!services.length) {
-                return 0
-            }
-            this.db.transaction(tx => {
-                const group = groupId && tx.query(`SELECT rowid, Name FROM MockGroup where rowid = ?`, groupId)?.pop()
-                if (group) {
-                    tx.exec(`DELETE FROM MockService WHERE GroupId = ?`, groupId)
-                    tx.exec(`UPDATE MockGroup SET Name = ?, Active = 1, Storage = ? WHERE rowid = ?`, name, storage, groupId)
-                } else {
-                    tx.exec(`INSERT INTO MockGroup (Name, Active, Storage) VALUES (?, 1, ?)`, name, storage)
-                    groupId = tx.query("SELECT last_insert_rowid() id")[0].id
-                }
-                tx.exec(`INSERT INTO MockService (GroupId, Active, URL, StatusCode, Headers, Body, PreResponseScript, Settings) VALUES ${services.map(() => "(?, ?, ?, ?, ?, ?, ?, ?)").join(",")}`, ...services.map(s => [
-                    groupId,
-                    s.active ?? false,
-                    s.url,
-                    s.status || 200,
-                    s.headers || "",
-                    s.body || "",
-                    s.script || "",
-                    s.settings || "",
-                ]).flat())
-                tx.exec(`UPDATE MockGroup SET Active = 0 WHERE rowid <> ?`, groupId)
-            })
-            return groupId
-        }
-
-        public delete(groupId: string, serviceId: string) {
-            if (serviceId !== undefined) {
-                return this.db.exec(`DELETE FROM MockService WHERE rowid = ?`, serviceId)
-            }
-            if (groupId !== undefined) {
-                let effect = 0
-                this.db.transaction(tx => {
-                    tx.exec(`DELETE FROM MockService WHERE GroupId = ?`, groupId)
-                    effect = tx.exec(`DELETE FROM MockGroup WHERE rowid = ?`, groupId)
                 })
-                return effect
             }
-            return 0
+            return this.db.query(`SELECT rowid, Name, Active, Storage FROM MockGroup`).map(i => {
+                return {
+                    id: i.rowid,
+                    name: i.Name,
+                    active: i.Active,
+                    storage: i.Storage,
+                }
+            })
         }
     })
+
+    type Group = {
+        id?: number
+        name: string
+        active: boolean
+        storage: string
+    }
+
+    type Service = {
+        id?: number
+        group: number
+        active: boolean
+        url: string
+        status: number
+        headers: string
+        body: string
+        script: string
+        settings: string
+    }
     ```
 
 2. Create a resource with url `/resource/mockd`.
@@ -183,26 +215,32 @@
         <script src="/libs/element-plus-icons-vue/2.3.1/index.iife.min.js"></script>
         <base target="_blank" />
         <style>
-            html, body {
+            html,
+            body {
                 height: 100%;
                 margin: 0;
                 background-color: #f0f2f5;
             }
+
             .el-table {
                 border-top: 1px solid #dcdfe6;
             }
+
             .el-table .disabled {
                 border-color: #e4e7ed;
                 color: #c0c4cc;
                 cursor: not-allowed;
             }
+
             .el-table .disabled a {
                 color: #c0c4cc;
             }
+
             .el-dialog__headerbtn {
                 height: 32px;
                 top: unset;
             }
+
             .el-pagination {
                 margin-top: 13px;
             }
@@ -214,31 +252,38 @@
             <el-card style="position: sticky; top: 0; z-index: 999;">
                 <el-row style="padding-bottom: 10px;">
                     <el-select v-model="this['proxy.group.id']" placeholder="Select a group" clearable
-                        @change="(value) => value && onServiceFetch()" style="flex-grow: 1; width: fit-content;">
+                        @change="onServiceFetch" style="flex-grow: 1; width: fit-content;">
                         <el-option v-for="group in group.records" :key="group.id" :label="group.name" :value="group.id">
                             <span v-if="group.active" style="font-weight: bolder;">{{ group.name }}</span>
                         </el-option>
                     </el-select>
                     <div style="margin-left: auto; display: inline-flex;">
-                        <el-button-group style="padding-left: 5px;">
-                            <el-button :icon="Check" @click="onGroupEdit" v-if="service.records.length"></el-button>
-                            <el-button :icon="Delete" @click="onGroupDelete" v-if="group.record?.id"></el-button>
+                        <el-button-group style="padding-left: 5px;" v-if="group.record">
+                            <el-button :icon="Check" @click="onGroupEdit"></el-button>
+                            <el-button :icon="Download" @click="onGroupExport"></el-button>
+                            <el-button :icon="Delete" @click="onGroupDelete"></el-button>
+                        </el-button-group>
+                        <el-button-group style="padding-left: 5px;" v-else>
+                            <el-button :icon="Plus" @click="onGroupEdit()"></el-button>
+                            <el-upload :auto-upload="false" action="" :on-change="onGroupImport" :show-file-list="false" accept=".har" style="display: none;">
+                                <el-button ref="GroupUploadRef"></el-button>
+                            </el-upload>
+                            <el-button :icon="Upload" @click="() => this.$refs.GroupUploadRef.ref.click()"></el-button>
                         </el-button-group>
                     </div>
                 </el-row>
             </el-card>
             <br />
-            <el-card>
+            <el-card v-if="group.record">
                 <el-row style="padding-bottom: 10px;">
                     <el-button-group style="padding-left: 5px;">
                         <el-button :icon="Plus" @click="onServiceEdit()"></el-button>
                         <el-upload :auto-upload="false" action="" :on-change="onServiceImport" :show-file-list="false"
                             accept=".har" style="display: none;">
-                            <el-button ref="UploadRef"></el-button>
+                            <el-button ref="ServiceUploadRef"></el-button>
                         </el-upload>
-                        <el-button :icon="Upload" @click="() => this.$refs.UploadRef.ref.click()"></el-button>
-                        <el-button :icon="Download" @click="onServiceExport" v-if="service.records.length"></el-button>
-                        <el-button :icon="Delete" @click="onServiceDelete" v-if="service.selections.length"></el-button>
+                        <el-button :icon="Upload" @click="() => this.$refs.ServiceUploadRef.ref.click()"></el-button>
+                        <el-button :icon="Delete" @click="onServiceDelete(service.selections.map(i => i.id))" v-if="service.selections.length"></el-button>
                     </el-button-group>
                 </el-row>
                 <el-row>
@@ -256,7 +301,8 @@
                                 <el-link type="primary" @click="onServiceEdit(scope.row)">
                                     {{ scope.row.url }}
                                 </el-link>
-                                <el-text v-if="scope.row.settings.name" type="info" style="margin-left: 8px;">{{ scope.row.settings.name }}</el-text>
+                                <el-text v-if="scope.row.settings.name" type="info" style="margin-left: 8px;">{{
+                                    scope.row.settings.name }}</el-text>
                             </template>
                         </el-table-column>
                         <el-table-column label="Status Code" width="120">
@@ -275,7 +321,7 @@
                                     @change="onServiceActiveSwitch(scope.row)">
                                 </el-switch>
                                 <el-button link type="danger"
-                                    @click="service.records = service.records.filter(i => i != scope.row)" :icon="Delete">
+                                    @click="onServiceDelete([scope.row.id])" :icon="Delete">
                                 </el-button>
                             </template>
                         </el-table-column>
@@ -291,7 +337,8 @@
                 <el-form>
                     <el-tabs tab-position="left" style="height: 500px;">
                         <el-tab-pane label="Storage" lazy>
-                            <monaco-editor v-model="group.dialog.draft.storage" height="500px" language="json"></monaco-editor>
+                            <monaco-editor v-model="group.dialog.draft.storage" height="500px"
+                                language="json"></monaco-editor>
                         </el-tab-pane>
                     </el-tabs>
                     <el-form-item style="margin: 12px 0 0 0;">
@@ -309,16 +356,20 @@
                 <el-form>
                     <el-tabs tab-position="left" style="height: 500px;">
                         <el-tab-pane label="Body" lazy>
-                            <monaco-editor v-model="service.dialog.draft.body" height="500px" language="json"></monaco-editor>
+                            <monaco-editor v-model="service.dialog.draft.body" height="500px"
+                                language="json"></monaco-editor>
                         </el-tab-pane>
                         <el-tab-pane label="Headers" lazy>
-                            <monaco-editor v-model="service.dialog.draft.headers" height="500px" language="json"></monaco-editor>
+                            <monaco-editor v-model="service.dialog.draft.headers" height="500px"
+                                language="json"></monaco-editor>
                         </el-tab-pane>
                         <el-tab-pane label="Status Code">
-                            <el-input v-model.number="service.dialog.draft.status" type="number" autocomplete="off"></el-input>
+                            <el-input v-model.number="service.dialog.draft.status" type="number"
+                                autocomplete="off"></el-input>
                         </el-tab-pane>
                         <el-tab-pane label="Pre-Response Script" lazy>
-                            <monaco-editor v-model="service.dialog.draft.script" height="500px" language="javascript"></monaco-editor>
+                            <monaco-editor v-model="service.dialog.draft.script" height="500px"
+                                language="javascript"></monaco-editor>
                         </el-tab-pane>
                         <el-tab-pane label="Settings" lazy>
                             <el-form label-width="auto" style="max-width: 360px;">
@@ -326,7 +377,7 @@
                                     <el-input v-model="service.dialog.draft.settings.name"></el-input>
                                 </el-form-item>
                                 <el-form-item label="Time">
-                                    <el-input v-model="service.dialog.draft.settings.time"  type="number"></el-input>
+                                    <el-input v-model="service.dialog.draft.settings.time" type="number"></el-input>
                                 </el-form-item>
                             </el-form>
                         </el-tab-pane>
@@ -348,27 +399,27 @@
                     const { Delete, Download, Plus, Upload, Check, } = ElementPlusIconsVue
                     return {
                         Delete, Download, Plus, Upload, Check,
-                        UploadRef: ref(),
+                        GroupUploadRef: ref(), ServiceUploadRef: ref(),
                     }
                 },
                 computed: {
                     "proxy.group.id": {
                         get() {
-                            return this.group.record?.id
+                            return this.group.record?.id ?? ""
                         },
                         set(value) {
-                            this.group.record = this.group.records.find(i => i.id === value) ?? {}
-                            if (!value) {
-                                this.service.records = []
+                            this.group.record = this.group.records.find(i => i.id === value)
+                            if (value) {
+                                this.onServiceFetch(value)
                             }
-                            document.title = this.group.record.name || "Just mock it"
+                            document.title = this.group.record?.name || "Just mock it"
                         },
                     },
                 },
                 data() {
                     return {
                         group: {
-                            record: {},
+                            record: undefined,
                             records: [],
                             dialog: {
                                 draft: {},
@@ -392,10 +443,25 @@
                     }
                 },
                 methods: {
+                    onGroupFetch() {
+                        fetch("/service/mockd").then(r => {
+                            if (r.status !== 200) {
+                                throw new Error(r.statusText)
+                            }
+                            return r.json()
+                        }).then(({ data: groups }) => {
+                            this.group.records = groups
+                            this["proxy.group.id"] = groups.find(i => i.active)?.id
+                        }).catch(e => {
+                            ElMessage.error(e.message)
+                        })
+                    },
                     onGroupEdit(record) {
                         this.group.dialog.draft = {
                             name: new Date().toISOString().replace(/[-T:\.Z]/g, ""),
+                            storage: "",
                             ...this.group.record,
+                            active: true,
                         }
                         ;["storage"].forEach(n => this.group.dialog.draft[n] = JSON.stringify(JSON.parse(this.group.dialog.draft[n] || "{}"), undefined, 2))
                         this.group.dialog.visible = true
@@ -405,17 +471,11 @@
                             ElMessage.warning("Group name is required")
                             return
                         }
-                        fetch(`/service/mockd?g=${this["proxy.group.id"] ?? ""}`, {
-                            method: "POST",
+                        fetch(`/service/mockd?g=${this.group.dialog.draft.id ?? ""}`, {
+                            method: this.group.dialog.draft.id ? "PUT" : "POST",
                             body: JSON.stringify({
-                                name: this.group.dialog.draft.name,
+                                ...this.group.dialog.draft,
                                 storage: JSON.stringify(JSON.parse(this.group.dialog.draft.storage || "{}")),
-                                services: this.service.records.map(i => {
-                                    return {
-                                        ...i,
-                                        settings: JSON.stringify(i.settings),
-                                    }
-                                }),
                             })
                         }).then(r => {
                             if (r.status !== 200) {
@@ -423,7 +483,7 @@
                             }
                             this.group.dialog.visible = false
                             ElMessage.success("Save succeeded")
-                            this.onServiceFetch()
+                            this.onGroupFetch()
                         }).catch(e => {
                             ElMessage.error(e.message)
                         })
@@ -436,7 +496,7 @@
                                 if (action === "confirm") {
                                     instance.confirmButtonLoading = true
                                     instance.confirmButtonText = "Delete..."
-                                    fetch(`/service/mockd?g=${this["proxy.group.id"] ?? ""}`, {
+                                    fetch(`/service/mockd?g=${this.group.record.id}`, {
                                         method: "DELETE",
                                     }).then(r => {
                                         if (r.status !== 200) {
@@ -457,53 +517,56 @@
                             },
                         }).catch(() => { })
                     },
-                    onServiceImport(file) {
+                    onGroupImport(file) {
                         const that = this,
                             reader = new FileReader()
                         reader.onload = function () {
-                            const { group, entries } = JSON.parse(this.result).log
-                            if (group) {
-                                that.group.record.name = that.group.record.name || group.name
-                                that.group.record.storage = JSON.stringify({
-                                    ...JSON.parse(group.storage),
-                                    ...JSON.parse(that.group.record.storage || "{}"),
+                            const { $group, entries } = JSON.parse(this.result).log
+                            fetch("/service/mockd", {
+                                method: "POST",
+                                body: JSON.stringify($group),
+                            }).then(r => {
+                                if (r.status !== 200) {
+                                    throw new Error(r.statusText)
+                                }
+                                return fetch("/service/mockd", {
+                                    method: "POST",
+                                    body: JSON.stringify(entries.filter(i => i._resourceType === "xhr").map(i => {
+                                        return {
+                                            active: false,
+                                            url: i.request.url.replace(/^https?:\/\/[^\/]+/, "").replace(/\?.*$/, ""),
+                                            status: i.response.status,
+                                            headers: JSON.stringify(i.response.headers.filter(i => that.constants.HEADER_WHITELIST.includes(i.name.toUpperCase())).reduce((p, c) => {
+                                                p[c.name] = c.value
+                                                return p
+                                            }, {})),
+                                            body: i.response.content?.text,
+                                            script: i.$script,
+                                            settings: JSON.stringify(i.$settings),
+                                        }
+                                    })),
+                                }).then(r => {
+                                    if (r.status !== 200) {
+                                        throw new Error(r.statusText)
+                                    }
                                 })
-                            }
-                            const records = entries.filter(i => i._resourceType === "xhr").map(i => {
-                                return {
-                                    active: false,
-                                    url: i.request.url.replace(/^https?:\/\/[^\/]+/, "").replace(/\?.*$/, ""),
-                                    status: i.response.status,
-                                    headers: JSON.stringify(i.response.headers.filter(i => that.constants.HEADER_WHITELIST.includes(i.name.toUpperCase())).reduce((p, c) => {
-                                        p[c.name] = c.value
-                                        return p
-                                    }, {})),
-                                    body: i.response.content?.text,
-                                    script: "",
-                                    settings: i.settings ?? {
-                                        time: i.time,
-                                        name: "",
-                                    },
-                                }
+                            }).then(() => {
+                                that.onGroupFetch()
+                            }).catch(e => {
+                                ElMessage.error(e.message)
                             })
-                            for (const record of records) {
-                                if (!that.service.records.some(i => i.active && i.url === record.url)) {
-                                    record.active = true
-                                }
-                                that.service.records.push(record)
-                            }
                         }
                         reader.readAsText(file.raw, "utf-8")
                     },
-                    onServiceExport() {
-                        if (!this.service.records.length) {
+                    onGroupExport() {
+                        if (!this.group.record) {
                             return
                         }
                         const a = document.createElement("a")
                         a.href = URL.createObjectURL(new Blob([JSON.stringify({
                             log: {
                                 creator: { name: "mockd", version: "0.1" },
-                                group: this.group.record,
+                                $group: this.group.record,
                                 entries: this.service.records.map(i => {
                                     return {
                                         _resourceType: "xhr",
@@ -518,8 +581,8 @@
                                             },
                                         },
                                         time: i.settings.time ?? 0,
-                                        settings: i.settings,
-                                        script: i.script,
+                                        $settings: i.settings,
+                                        $script: i.script,
                                     }
                                 })
                             }
@@ -527,34 +590,75 @@
                         a.download = Date.now() + ".har"
                         a.click()
                     },
-                    onServiceFetch() {
+                    onServiceFetch(group = this.group.record.id) {
+                        if (!group) {
+                            return
+                        }
                         this.service.loading = true
-                        fetch(`/service/mockd?g=${this["proxy.group.id"] ?? ""}`).then(r => {
+                        fetch(`/service/mockd?g=${group}`).then(r => {
                             if (r.status !== 200) {
                                 throw new Error(r.statusText)
                             }
                             return r.json()
-                        }).then(r => {
-                            this.service.records = r.data.services.map(i => {
+                        }).then(({ data: services }) => {
+                            this.service.records = services.map(i => {
                                 return {
                                     ...i,
                                     settings: JSON.parse(i.settings),
                                 }
                             })
-                            this.group.records = r.data.groups
-                            this["proxy.group.id"] = this["proxy.group.id"] || r.data.groups.find(i => i.active)?.id
                         }).catch(e => {
                             ElMessage.error(e.message)
                         }).finally(() => {
                             this.service.loading = false
                         })
                     },
-                    onServiceDelete() {
-                        this.service.records = this.service.records.filter(i => !this.service.selections.some(s => s == i))
+                    onServiceImport(file) {
+                        const that = this,
+                            reader = new FileReader()
+                        reader.onload = function () {
+                            fetch("/service/mockd", {
+                                method: "POST",
+                                body: JSON.stringify(entries.filter(i => i._resourceType === "xhr").map(i => {
+                                    return {
+                                        group: this.group.record.id,
+                                        active: false,
+                                        url: i.request.url.replace(/^https?:\/\/[^\/]+/, "").replace(/\?.*$/, ""),
+                                        status: i.response.status,
+                                        headers: JSON.stringify(i.response.headers.filter(i => that.constants.HEADER_WHITELIST.includes(i.name.toUpperCase())).reduce((p, c) => {
+                                            p[c.name] = c.value
+                                            return p
+                                        }, {})),
+                                        body: i.response.content?.text,
+                                        script: i.$script,
+                                        settings: JSON.stringify(i.$settings),
+                                    }
+                                })),
+                            }).then(r => {
+                                if (r.status !== 200) {
+                                    throw new Error(r.statusText)
+                                }
+                                this.onServiceFetch()
+                            })
+                        }
+                        reader.readAsText(file.raw, "utf-8")
+                    },
+                    onServiceDelete(services) {
+                        fetch(`/service/mockd?g=${this.group.record.id}&s=${services.join(",")}`, {
+                            method: "DELETE",
+                        }).then(r => {
+                            if (r.status !== 200) {
+                                throw new Error(r.statusText)
+                            }
+                            this.onServiceFetch()
+                        }).catch(e => {
+                            ElMessage.error(e.message)
+                        })
                     },
                     onServiceEdit(record) {
                         this.service.dialog.draft = {
-                            active: false,
+                            group: this.group.record.id,
+                            active: true,
                             url: "",
                             status: 200,
                             headers: "{}",
@@ -571,13 +675,26 @@
                         this.service.dialog.visible = true
                     },
                     onServiceActiveSwitch(record) {
-                        if (!record.active) {
-                            return
-                        }
-                        this.service.records.filter(i => i.active && i.url === record.url).forEach(i => {
-                            i.active = false
+                        fetch(`/service/mockd`, {
+                            method: "PUT",
+                            body: JSON.stringify({
+                                ...record,
+                                settings: JSON.stringify(record.settings),
+                            }),
+                        }).then(r => {
+                            if (r.status !== 200) {
+                                throw new Error(r.statusText)
+                            }    
+                            if (!record.active) {
+                                return
+                            }
+                            this.service.records.filter(i => i.active && i.url === record.url).forEach(i => {
+                                i.active = false
+                            })
+                            record.active = true
+                        }).catch(e => {
+                            ElMessage.error(e.message)
                         })
-                        record.active = true
                     },
                     onServiceSelect(record) {
                         this.service.highlights = this.service.records.filter(i => i.url === record.url)
@@ -598,16 +715,25 @@
                             return
                         }
                         ;["headers", "body"].forEach(n => this.service.dialog.draft[n] = JSON.stringify(JSON.parse(this.service.dialog.draft[n] || "{}")))
-                        if (this.service.dialog.record) {
-                            Object.assign(this.service.dialog.record, this.service.dialog.draft)
-                        } else {
-                            this.service.records.push(this.service.dialog.draft)
-                        }
-                        this.service.dialog.visible = false
+                        fetch(`/service/mockd`, {
+                            method: this.service.dialog.draft.id ? "PUT" : "POST",
+                            body: JSON.stringify({
+                                ...this.service.dialog.draft,
+                                settings: JSON.stringify(this.service.dialog.draft.settings),
+                            }),
+                        }).then(r => {
+                            if (r.status !== 200) {
+                                throw new Error(r.statusText)
+                            }
+                            this.service.dialog.visible = false
+                            this.onServiceFetch()
+                        }).catch(e => {
+                            ElMessage.error(e.message)
+                        })
                     },
                 },
                 mounted() {
-                    this.onServiceFetch()
+                    this.onGroupFetch()
                 },
                 components: {
                     "monaco-editor": {
