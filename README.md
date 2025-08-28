@@ -214,6 +214,15 @@ A module can be imported in the controller.
 
 - [A custom module extends Number](docs/modules/number.md)
 
+- Import a module from remote with http/https.
+    ```typescript
+    import * as JSON5 from "https://unpkg.com/json5@2/dist/index.min.js"
+
+    export default function (ctx: ServiceContext) {
+        return JSON5.parse("{ greeting: 'hello, world' }")
+    }
+    ```
+
 ### Daemon
 
 The daemon is a backend running service with no timeout limit.
