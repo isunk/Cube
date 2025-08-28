@@ -2,6 +2,8 @@ package internal
 
 import (
 	"errors"
+	"io/ioutil"
+	"net/http"
 	"path"
 	"strings"
 
@@ -114,15 +116,36 @@ func CreateWorker(program *goja.Program, id int) *Worker {
 				name, stype = id[10:], "crontab"
 			} else if strings.HasPrefix(id, "./") {
 				name, stype = path.Clean(id), "module"
+			} else if strings.HasPrefix(id, "http://") || strings.HasPrefix(id, "https://") {
+				name, stype = id, "link"
 			} else { // 如果没有 "./" 前缀，则视为 node_modules
 				name, stype = "node_modules/"+id, "module"
 			}
 
-			// 根据名称查找源码
 			var src string
-			if err := Db.QueryRow("select compiled from source where name = ? and type = ? and active = true", name, stype).Scan(&src); err != nil {
-				return nil, err
+			if stype == "link" {
+				// 在线请求网络源码
+				resp, err := http.Get(name)
+				if err != nil {
+					return nil, err
+				}
+				defer resp.Body.Close()
+				body, err := ioutil.ReadAll(resp.Body)
+				if err != nil {
+					return nil, err
+				}
+				src = string(body)
+			} else {
+				// 根据名称查找数据库源码
+				if err := Db.QueryRow("select compiled from source where name = ? and type = ? and active = true", name, stype).Scan(&src); err != nil {
+					return nil, err
+				}
 			}
+
+			if src == "" {
+				return nil, errors.New("module not found")
+			}
+
 			// 编译
 			parsed, err := goja.Parse(
 				name,
@@ -166,7 +189,6 @@ func CreateWorker(program *goja.Program, id int) *Worker {
 		} else {
 			return nil, errors.New("entry is not a function")
 		}
-
 		return module.Get("exports"), nil
 	})
 
