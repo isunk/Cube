@@ -176,6 +176,7 @@ type Image = {
     getStringWidthAndHeight(s: string): { width: number; height: number; };
     drawImage(image: Image, x: number, y: number): void;
     drawString(s: string, x: number, y: number, ax?: number, ay?: number, width?: number, lineSpacing?: number): void;
+    crop(sx, sy, ex, ey): Image;
     resize(width: number, height?: number): Image;
     toJPG(quality?: number): Buffer;
     toPNG(): Buffer;

@@ -151,6 +151,13 @@ func (i *Image) DrawString(s string, x, y, ax, ay, width, lineSpacing float64) {
 	i.c.DrawStringWrapped(s, x, y, ax, ay, width, lineSpacing, gg.AlignLeft)
 }
 
+func (i *Image) Crop(sx int, sy int, ex int, ey int) *Image {
+	img := i.c.Image().(interface {
+		SubImage(r image.Rectangle) image.Image
+	}).SubImage(image.Rect(sx, sy, ex, ey))
+	return &Image{gg.NewContextForImage(img), 0}
+}
+
 func (i *Image) Resize(w uint, h uint) *Image {
 	img := resize.Resize(w, h, i.c.Image(), resize.Bilinear)
 	return &Image{gg.NewContextForImage(img), 0}
