@@ -3,6 +3,8 @@
 1. Create a controller with url `/service/mockd` and method `Any`.
     ```typescript
     //?name=mockd&type=controller&url=mockd{name}&method=&tag=mock
+    import * as JSON5 from "https://unpkg.com/json5@2/dist/index.min.js"
+
     export default (app => app.run.bind(app))(new class {
         private db = $native("db")
 
@@ -78,7 +80,7 @@
                 setTimeout(() => { }, settings.time)
             }
             const input = requestBody && JSON.parse(decodeURIComponent(requestBody)),
-                output = JSON.parse(service.body || "{}"),
+                output = this.json52any(service.body || "{}"),
                 session = JSON.parse(service.storage || "{}"),
                 status = service.status || 200,
                 headers = JSON.parse(service.headers || "{}"),
@@ -178,6 +180,14 @@
                 }
             })
         }
+
+        private json52any(text: string) {
+            try {
+                return JSON5.parse(text, undefined)
+            } catch (e) {
+                throw new Error("inavlid json5: " + e.message)
+            }
+        }
     })
 
     type Group = {
@@ -215,32 +225,26 @@
         <script src="/libs/element-plus-icons-vue/2.3.1/index.iife.min.js"></script>
         <base target="_blank" />
         <style>
-            html,
-            body {
+            html, body {
                 height: 100%;
                 margin: 0;
                 background-color: #f0f2f5;
             }
-
             .el-table {
                 border-top: 1px solid #dcdfe6;
             }
-
             .el-table .disabled {
                 border-color: #e4e7ed;
                 color: #c0c4cc;
                 cursor: not-allowed;
             }
-
             .el-table .disabled a {
                 color: #c0c4cc;
             }
-
             .el-dialog__headerbtn {
                 height: 32px;
                 top: unset;
             }
-
             .el-pagination {
                 margin-top: 13px;
             }
@@ -251,8 +255,7 @@
         <div id="app" v-cloak style="padding: 32px; position: relative;">
             <el-card style="position: sticky; top: 0; z-index: 999;">
                 <el-row style="padding-bottom: 10px;">
-                    <el-select v-model="this['proxy.group.id']" placeholder="Select a group" clearable
-                        @change="onServiceFetch" style="flex-grow: 1; width: fit-content;">
+                    <el-select v-model="this['proxy.group.id']" placeholder="Select a group" clearable @change="onServiceFetch" style="flex-grow: 1; width: fit-content;">
                         <el-option v-for="group in group.records" :key="group.id" :label="group.name" :value="group.id">
                             <span v-if="group.active" style="font-weight: bolder;">{{ group.name }}</span>
                         </el-option>
@@ -278,8 +281,7 @@
                 <el-row style="padding-bottom: 10px;">
                     <el-button-group style="padding-left: 5px;">
                         <el-button :icon="Plus" @click="onServiceEdit()"></el-button>
-                        <el-upload :auto-upload="false" action="" :on-change="onServiceImport" :show-file-list="false"
-                            accept=".har" style="display: none;">
+                        <el-upload :auto-upload="false" action="" :on-change="onServiceImport" :show-file-list="false" accept=".har" style="display: none;">
                             <el-button ref="ServiceUploadRef"></el-button>
                         </el-upload>
                         <el-button :icon="Upload" @click="() => this.$refs.ServiceUploadRef.ref.click()"></el-button>
@@ -287,8 +289,7 @@
                     </el-button-group>
                 </el-row>
                 <el-row>
-                    <el-table v-loading="service.loading" :data="service.records" :row-class-name="onServiceClass"
-                        @selection-change="(rows) => this.service.selections = rows" @row-click="onServiceSelect">
+                    <el-table v-loading="service.loading" :data="service.records" :row-class-name="onServiceClass" @selection-change="(rows) => this.service.selections = rows" @row-click="onServiceSelect">
                         <el-table-column type="selection" width="40">
                         </el-table-column>
                         <el-table-column label="#" width="60">
@@ -301,8 +302,9 @@
                                 <el-link type="primary" @click="onServiceEdit(scope.row)">
                                     {{ scope.row.url }}
                                 </el-link>
-                                <el-text v-if="scope.row.settings.name" type="info" style="margin-left: 8px;">{{
-                                    scope.row.settings.name }}</el-text>
+                                <el-text v-if="scope.row.settings.name" type="info" style="margin-left: 8px;">
+                                    {{ scope.row.settings.name }}
+                                </el-text>
                             </template>
                         </el-table-column>
                         <el-table-column label="Status Code" width="120">
@@ -320,8 +322,7 @@
                                 <el-switch v-model="scope.row.active" size="small" style="margin-right: 12px;"
                                     @change="onServiceActiveSwitch(scope.row)">
                                 </el-switch>
-                                <el-button link type="danger"
-                                    @click="onServiceDelete([scope.row.id])" :icon="Delete">
+                                <el-button link type="danger" @click="onServiceDelete([scope.row.id])" :icon="Delete">
                                 </el-button>
                             </template>
                         </el-table-column>
@@ -357,7 +358,7 @@
                     <el-tabs tab-position="left" style="height: 500px;">
                         <el-tab-pane label="Body" lazy>
                             <monaco-editor v-model="service.dialog.draft.body" height="500px"
-                                language="json"></monaco-editor>
+                                language="json5"></monaco-editor>
                         </el-tab-pane>
                         <el-tab-pane label="Headers" lazy>
                             <monaco-editor v-model="service.dialog.draft.headers" height="500px"
@@ -384,6 +385,7 @@
                     </el-tabs>
                     <el-form-item style="margin: 12px 0 0 0;">
                         <div style="width: 100%; display: flex; justify-content: flex-end;">
+                            <el-button @click="onServiceDialogPreview">Preview</el-button>
                             <el-button type="primary" @click="onServiceDialogSubmit">Submit</el-button>
                             <el-button @click="service.dialog.visible = !service.dialog.visible">Cancel</el-button>
                         </div>
@@ -661,7 +663,9 @@
                             active: true,
                             url: "",
                             status: 200,
-                            headers: "{}",
+                            headers: JSON.stringify({
+                                "Content-Type":"application/json; charset=utf-8",
+                            }, undefined, 2),
                             body: "{}",
                             script: "",
                             settings: {
@@ -670,7 +674,11 @@
                             },
                             ...record,
                         }
-                        ;["headers", "body"].forEach(n => this.service.dialog.draft[n] = JSON.stringify(JSON.parse(this.service.dialog.draft[n] || "{}"), undefined, 2))
+                        ;["headers", "body"].forEach(n => {
+                            try {
+                                this.service.dialog.draft[n] = JSON.stringify(JSON.parse(this.service.dialog.draft[n] || "{}"), undefined, 2)
+                            } catch { }
+                        })
                         this.service.dialog.record = record
                         this.service.dialog.visible = true
                     },
@@ -709,12 +717,18 @@
                         }
                         return clz
                     },
+                    onServiceDialogPreview() {
+                        if (!this.service.dialog.draft.url) {
+                            return
+                        }
+                        window.open("/service/mockd?test&u=" + encodeURIComponent(this.service.dialog.draft.url))
+                    },
                     onServiceDialogSubmit() {
                         if (!this.service.dialog.draft.url) {
                             ElMessage.warning("Service url is required")
                             return
                         }
-                        ;["headers", "body"].forEach(n => this.service.dialog.draft[n] = JSON.stringify(JSON.parse(this.service.dialog.draft[n] || "{}")))
+                        ;["headers"].forEach(n => this.service.dialog.draft[n] = JSON.stringify(JSON.parse(this.service.dialog.draft[n] || "{}")))
                         fetch(`/service/mockd`, {
                             method: this.service.dialog.draft.id ? "PUT" : "POST",
                             body: JSON.stringify({
@@ -772,7 +786,74 @@
                                 })
                                 .then(() => {
                                     window.require(["vs/editor/editor.main"], () => {
-                                        const editor = window.monaco.editor.create(container.value, {
+                                        monaco.languages.register({ id: "json5" })
+                                        // 定义 json5 语法高亮规则
+                                        monaco.languages.setMonarchTokensProvider("json5", {
+                                            tokenizer: {
+                                                root: [
+                                                    // 单行注释
+                                                    [/\/\/.*/, "comment.single.json5"],
+                                                    // 多行注释
+                                                    [/\/\*/, "comment.block.json5", "@comment"],
+                                                    // 字符串
+                                                    [/'/, "string.quoted.json5", "@stringSingle"], // 单引号
+                                                    [/"/, "string.quoted.json5", "@stringDouble"], // 双引号
+                                                    // 数字
+                                                    [/0x[0-9a-fA-F]+/, "constant.hex.numeric.json5"], // 十六进制
+                                                    [/[+-]?(\d*\.\d+|\d+)([eE][+-]?\d+)?/, "constant.dec.numeric.json5"], // 小数和整数
+                                                    // 关键字常量
+                                                    [/\b(?:true|false|null|Infinity|NaN)\b/, "constant.language.json5"],
+                                                    // 对象和数组的标点符号
+                                                    [/[{}]/, "punctuation.definition.dictionary.json5"],
+                                                    [/\[\]/, "punctuation.definition.array.json5"],
+                                                    [/,/, "punctuation.separator.json5"],
+                                                ],
+                                                comment: [
+                                                    [/[^*]+/, "comment.block.json5"],
+                                                    [/\*\//, "comment.block.json5", "@pop"],
+                                                    [/\*/, "comment.block.json5"],
+                                                ],
+                                                stringSingle: [
+                                                    [/[^\\']+/, "string.quoted.json5"],
+                                                    [/\\./, "constant.character.escape.json5"],
+                                                    [/'/, "string.quoted.json5", "@pop"],
+                                                ],
+                                                stringDouble: [
+                                                    [/[^\\"]+/, "string.quoted.json5"],
+                                                    [/\\./, "constant.character.escape.json5"],
+                                                    [/"/, "string.quoted.json5", "@pop"],
+                                                ],
+                                            },
+                                        })
+                                        // 设置 json5 的自动缩进和括号补全
+                                        monaco.languages.setLanguageConfiguration("json5", {
+                                            autoClosingPairs: [
+                                                { open: "{", close: "}" },
+                                                { open: "[", close: "]" },
+                                                { open: "\"", close: "\"" },
+                                                { open: "'", close: "'" },
+                                            ],
+                                            brackets: [
+                                                ["{", "}"],
+                                                ["[", "]"],
+                                            ],
+                                            surroundingPairs: [
+                                                { open: "{", close: "}" },
+                                                { open: "[", close: "]" },
+                                                { open: "\"", close: "\"" },
+                                                { open: "'", close: "'" },
+                                            ],
+                                            indentationRules: {
+                                                // 缩进规则：在 { 或 [ 后换行增加缩进， } 或 ] 前换行减少缩进
+                                                increaseIndentPattern: /({|\[)[^\}\]]*$/,
+                                                decreaseIndentPattern: /^[ \t]*(\}|\]),?$/,
+                                            },
+                                            comments: {
+                                                lineComment: "//",
+                                                blockComment: ["/*", "*/"],
+                                            },
+                                        })
+                                        const editor = monaco.editor.create(container.value, {
                                             language: props.language,
                                             value: props.modelValue,
                                         })
