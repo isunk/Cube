@@ -195,6 +195,18 @@
                             }
                         }
                     }
+
+                    // 劫持诊断错误提示
+                    const setModelMarkers = monaco.editor.setModelMarkers
+                    monaco.editor.setModelMarkers = (model, owner, markers) => {
+                        return setModelMarkers(model, owner, markers.filter(i => {
+                            // 忽略外部 module 链接诊断错误
+                            if (i.code === "2307" && /^Cannot find module 'https?:\/\/.*' or its corresponding type declarations.$/.test(i.message)) {
+                                return false
+                            }
+                            return true
+                        }))
+                    }
                 }
 
                 // 创建 editor
