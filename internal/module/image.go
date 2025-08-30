@@ -14,6 +14,7 @@ import (
 	"github.com/golang/freetype/truetype"
 	"github.com/nfnt/resize"
 	"golang.org/x/image/font/gofont/goregular"
+	_ "golang.org/x/image/webp"
 )
 
 func init() {
