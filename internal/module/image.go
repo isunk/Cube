@@ -51,13 +51,15 @@ func (i *Image) Height() int {
 	return i.c.Height()
 }
 
-func (i *Image) Get(x int, y int) uint32 {
-	r, g, b, a := i.c.Image().At(x, y).RGBA()
-	return r << 24 & g << 16 & b << 8 & a
+func (i *Image) Get(x int, y int) [4]uint8 {
+	r, g, b, a := i.c.Image().At(x, y).RGBA() // 为了避免溢出和保持计算精度，RGBA 方法返回 uint32 类型而非 uint8 类型，实际使用时可通过右移 8 位以获取 0-255 的字节值，如 r >> 8
+	return [4]uint8{uint8(r >> 8), uint8(g >> 8), uint8(b >> 8), uint8(a >> 8)}
 }
 
-func (i *Image) Set(x int, y int, p uint32) {
-	i.c.Image().(*image.RGBA).Set(x, y, color.RGBA{R: uint8(p >> 24), G: uint8(p >> 16), B: uint8(p >> 8), A: uint8(p)})
+func (i *Image) Set(x int, y int, rgba []uint8) {
+	c := []uint8{0, 0, 0, 255}
+	copy(c, rgba)
+	i.c.Image().(*image.RGBA).Set(x, y, color.RGBA{R: c[0], G: c[1], B: c[2], A: c[3]})
 }
 
 func (i *Image) SetDrawRotate(degrees float64) { // 旋转画布（但不会旋转底图），应在 DrawImage、DrawString 方法之前调用，用于绘画倾斜的图片或文字
@@ -162,6 +164,26 @@ func (i *Image) Crop(sx int, sy int, ex int, ey int) *Image {
 func (i *Image) Resize(w uint, h uint) *Image {
 	img := resize.Resize(w, h, i.c.Image(), resize.Bilinear)
 	return &Image{gg.NewContextForImage(img), 0}
+}
+
+func (i *Image) ReplaceColor(rgba []uint8, rgba2 []uint8) *Image {
+	c, c2 := []uint8{0, 0, 0, 255}, []uint8{0, 0, 0, 255}
+	copy(c, rgba)
+	copy(c2, rgba2)
+	img := i.c.Image()
+	bounds := img.Bounds()
+	output := image.NewRGBA(bounds)
+	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+		for x := bounds.Min.X; x < bounds.Max.X; x++ {
+			r, g, b, a := img.At(x, y).RGBA()
+			if uint8(r>>8) == c[0] && uint8(g>>8) == c[1] && uint8(b>>8) == c[2] && uint8(a>>8) == c[3] {
+				output.Set(x, y, color.RGBA{c2[0], c2[1], c2[2], c2[3]})
+			} else {
+				output.Set(x, y, img.At(x, y))
+			}
+		}
+	}
+	return &Image{gg.NewContextForImage(output), 0}
 }
 
 func (i *Image) ToJPG(quality int) (builtin.Buffer, error) {

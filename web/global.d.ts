@@ -165,8 +165,8 @@ declare function $native(name: "http"): (options?: HttpOptions) => {
 type Image = {
     width(): number;
     height(): number;
-    get(x: number, y: number): number;
-    set(x: number, y: number, p: number): void;
+    get(x: number, y: number): [number, number, number, number];
+    set(x: number, y: number, rgba: [number, number, number, number]): void;
     /** set rotate for next drawings */
     setDrawRotate(degrees: number): void;
     /** set font face for next drawings */
@@ -178,6 +178,7 @@ type Image = {
     drawString(s: string, x: number, y: number, ax?: number, ay?: number, width?: number, lineSpacing?: number): void;
     crop(sx, sy, ex, ey): Image;
     resize(width: number, height?: number): Image;
+    replaceColor(rgba: [number, number, number, number], rgba2: [number, number, number, number]): Image;
     toJPG(quality?: number): Buffer;
     toPNG(): Buffer;
 }
