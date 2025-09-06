@@ -166,18 +166,19 @@ func (i *Image) Resize(w uint, h uint) *Image {
 	return &Image{gg.NewContextForImage(img), 0}
 }
 
-func (i *Image) ReplaceColor(rgba []uint8, rgba2 []uint8) *Image {
-	c, c2 := []uint8{0, 0, 0, 255}, []uint8{0, 0, 0, 255}
-	copy(c, rgba)
-	copy(c2, rgba2)
+func (i *Image) ReplaceColor(src []uint8, dst []uint8) *Image {
+	srcs, dsts := append([]uint8{0, 0, 0, 255}, src...), []uint8{0, 0, 0, 255}
+	copy(srcs, src)
+	copy(dsts, dst)
 	img := i.c.Image()
 	bounds := img.Bounds()
 	output := image.NewRGBA(bounds)
 	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
 		for x := bounds.Min.X; x < bounds.Max.X; x++ {
 			r, g, b, a := img.At(x, y).RGBA()
-			if uint8(r>>8) == c[0] && uint8(g>>8) == c[1] && uint8(b>>8) == c[2] && uint8(a>>8) == c[3] {
-				output.Set(x, y, color.RGBA{c2[0], c2[1], c2[2], c2[3]})
+			ur, ug, ub, ua := uint8(r>>8), uint8(g>>8), uint8(b>>8), uint8(a>>8)
+			if ur >= srcs[0] && ur <= srcs[4] && ug >= srcs[1] && ug <= srcs[5] && ub >= srcs[2] && ub <= srcs[6] && ua >= srcs[3] && ua <= srcs[7] {
+				output.Set(x, y, color.RGBA{dsts[0], dsts[1], dsts[2], dsts[3]})
 			} else {
 				output.Set(x, y, img.At(x, y))
 			}
