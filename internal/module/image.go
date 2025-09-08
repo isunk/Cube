@@ -166,7 +166,7 @@ func (i *Image) Resize(w uint, h uint) *Image {
 	return &Image{gg.NewContextForImage(img), 0}
 }
 
-func (i *Image) ReplaceColor(src []uint8, dst []uint8) *Image {
+func (i *Image) Lasso(points [][]int, src []uint8, dst []uint8) *Image {
 	srcs, dsts := append([]uint8{0, 0, 0, 255}, src...), []uint8{0, 0, 0, 255}
 	copy(srcs, src)
 	copy(dsts, dst)
@@ -177,10 +177,10 @@ func (i *Image) ReplaceColor(src []uint8, dst []uint8) *Image {
 		for x := bounds.Min.X; x < bounds.Max.X; x++ {
 			r, g, b, a := img.At(x, y).RGBA()
 			ur, ug, ub, ua := uint8(r>>8), uint8(g>>8), uint8(b>>8), uint8(a>>8)
-			if ur >= srcs[0] && ur <= srcs[4] && ug >= srcs[1] && ug <= srcs[5] && ub >= srcs[2] && ub <= srcs[6] && ua >= srcs[3] && ua <= srcs[7] {
-				output.Set(x, y, color.RGBA{dsts[0], dsts[1], dsts[2], dsts[3]})
+			if isPointInPolygon(x, y, points) && ur >= srcs[0] && ur <= srcs[4] && ug >= srcs[1] && ug <= srcs[5] && ub >= srcs[2] && ub <= srcs[6] && ua >= srcs[3] && ua <= srcs[7] {
+				output.SetRGBA(x, y, color.RGBA{dsts[0], dsts[1], dsts[2], dsts[3]})
 			} else {
-				output.Set(x, y, img.At(x, y))
+				output.SetRGBA(x, y, color.RGBA{ur, ug, ub, ua})
 			}
 		}
 	}
@@ -204,4 +204,32 @@ func (i *Image) ToPNG() (builtin.Buffer, error) {
 		return nil, err
 	}
 	return w.Bytes(), nil
+}
+
+type point struct {
+	X, Y int
+}
+
+// 射线法判断坐标 (x, y) 是否在多边形内部（polygon 为顶点集合，需闭合）
+func isPointInPolygon(x, y int, polygon [][]int) bool {
+	inside := false
+
+	for i, n := 0, len(polygon); i < n; i++ {
+		xi, yi := polygon[i][0], polygon[i][1]
+
+		j := (i + 1) % n // 下一个顶点（最后一个顶点的下一个是第一个，实现闭合）
+		xj, yj := polygon[j][0], polygon[j][1]
+
+		// 判断点是否在当前边的 y 轴范围内
+		if (yi > y) == (yj > y) {
+			continue
+		}
+
+		// 计算射线（水平向右）与当前边的 x 交点，若交点 x 坐标 >= 当前点 x，说明射线穿过该边
+		if x <= (((y-yi)*(xj-xi))/(yj-yi) + xi) { // 边的线性方程：(y - yi) = ((yj - yi) / (xj - xi)) * (横轴交点 - xi)
+			inside = !inside
+		}
+	}
+
+	return inside
 }

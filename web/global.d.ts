@@ -178,7 +178,7 @@ type Image = {
     drawString(s: string, x: number, y: number, ax?: number, ay?: number, width?: number, lineSpacing?: number): void;
     crop(sx, sy, ex, ey): Image;
     resize(width: number, height?: number): Image;
-    replaceColor(rgba: [r: number, g: number, b: number, a: number, r2?: number, g2?: number, b2?: number, a2?: number], rgba2: [r: number, g: number, b: number, a: number]): Image;
+    lasso(points: [x: number, y: number][], src: [r: number, g: number, b: number, a: number, rt?: number, gt?: number, bt?: number, at?: number], dst: [r: number, g: number, b: number, a: number]): Image;
     toJPG(quality?: number): Buffer;
     toPNG(): Buffer;
 }
