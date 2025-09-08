@@ -378,7 +378,12 @@ Here are some built-in methods and modules.
 
     img.drawString(text, img.width(), img.height() - textHeight, 1, 1) // write text in the bottom right corner of the image
 
-    filec.write("output.jpg", img.resize(1280).toJPG())
+    // Use the Lasso tool to replace the pixels (ranging from [0, 0, 0, 255] to [200, 200, 200, 255]) with [0, 0, 0, 0] in the polygonal area ([0, 0], [1200, 0], [1200, 1200]) 
+    const img2 = img.lasso([
+        [0, 0], [1200, 0], [1200, 1200],
+    ], [0, 0, 0, 255, 200, 200, 200], [0, 0, 0, 0])
+
+    filec.write("output.jpg", img2.resize(1280).toJPG())
     ```
 
 - Template
