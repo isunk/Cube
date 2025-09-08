@@ -214,20 +214,32 @@ type point struct {
 func isPointInPolygon(x, y int, polygon [][]int) bool {
 	inside := false
 
-	for i, n := 0, len(polygon); i < n; i++ {
-		xi, yi := polygon[i][0], polygon[i][1]
+	for a, n := 0, len(polygon); a < n; a++ {
+		xa, ya := polygon[a][0], polygon[a][1]
 
-		j := (i + 1) % n // 下一个顶点（最后一个顶点的下一个是第一个，实现闭合）
-		xj, yj := polygon[j][0], polygon[j][1]
+		// 获取下一个多边形顶点（最后一个多边形顶点的下一个是第一个，以实现闭合）
+		b := (a + 1) % n
+		xb, yb := polygon[b][0], polygon[b][1]
 
-		// 判断点是否在当前边的 y 轴范围内
-		if (yi > y) == (yj > y) {
-			continue
+		if (xa == x && ya == y) || (xb == x && yb == y) {
+			return true // 点与多边形顶点是否重合
 		}
 
-		// 计算射线（水平向右）与当前边的交点，若交点横轴坐标 >= 当前点横轴坐标，说明射线穿过该边
-		if x <= (((y-yi)*(xj-xi))/(yj-yi) + xi) { // 边的线性方程：(y - yi) = ((yj - yi) / (xj - xi)) * (交点的横坐标 - xi)
-			inside = !inside
+		if (ya == y) && (yb == y) {
+			return true // 点在水平直线上
+		}
+
+		if (ya > y) == (yb > y) {
+			continue // 线段（多边形的边）两端点不在射线两侧
+		}
+
+		// 计算射线（水平向右）与当前线段的交点，若交点横轴坐标 > 当前点横轴坐标，说明射线穿过该边
+		xc := xa + ((xb-xa)/(yb-ya))*(y-ya)
+		if xc == x {
+			return true // 点在多边形的边上
+		}
+		if xc > x {
+			inside = !inside // 射线穿过多边形的边
 		}
 	}
 
