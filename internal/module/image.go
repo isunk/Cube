@@ -210,7 +210,7 @@ type point struct {
 	X, Y int
 }
 
-// 射线法判断坐标 (x, y) 是否在多边形内部（polygon 为顶点集合，需闭合）
+// 通过射线法判断坐标 (x, y) 是否在多边形内部（从坐标向右引出一条射线，计算射线和多边形的交点数量，交点数如果是奇数说明点在多边形内，否则如果是偶数则点不在多边形内）
 func isPointInPolygon(x, y int, polygon [][]int) bool {
 	inside := false
 
@@ -225,8 +225,8 @@ func isPointInPolygon(x, y int, polygon [][]int) bool {
 			continue
 		}
 
-		// 计算射线（水平向右）与当前边的 x 交点，若交点 x 坐标 >= 当前点 x，说明射线穿过该边
-		if x <= (((y-yi)*(xj-xi))/(yj-yi) + xi) { // 边的线性方程：(y - yi) = ((yj - yi) / (xj - xi)) * (横轴交点 - xi)
+		// 计算射线（水平向右）与当前边的交点，若交点横轴坐标 >= 当前点横轴坐标，说明射线穿过该边
+		if x <= (((y-yi)*(xj-xi))/(yj-yi) + xi) { // 边的线性方程：(y - yi) = ((yj - yi) / (xj - xi)) * (交点的横坐标 - xi)
 			inside = !inside
 		}
 	}
