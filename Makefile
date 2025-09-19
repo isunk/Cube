@@ -19,10 +19,18 @@ bench: # 执行（基准）单元测试用例
 	@go test -v -run=^$ -benchmem -bench=. ./... | grep -v 'no test files'
 
 # 编译
-build: clean config # 默认不使用 CDN 资源、不使用 UPX 压缩，即 make build CDN=0 UPX=0
+build: clean config # 默认不使用 CDN 资源、不使用 UPX 压缩、不使用静态链接编译，即 make build CDN=0 UPX=0 STATIC=0
 	@
+	# 是否使用静态编译
+	if [ "$(STATIC)" = "1" ]; then
+		# 编译（移除可执行文件中的符号表、移除可执行文件中的调试信息、强制生成完全静态链接的可执行文件）
+		go build -ldflags "-s -w -extldflags=-static" .
+	else
+		# 编译（移除可执行文件中的符号表、移除可执行文件中的调试信息）
+		go build -ldflags "-s -w" .
+	fi
 	# 编译（删除符号、调试信息）
-	go build -ldflags "-s -w" .
+	
 	# 是否使用 UPX 压缩
 	if [ "$(UPX)" = "1" ]; then
 		if [ "$(shell uname)" = "Linux" ]; then
