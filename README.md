@@ -349,7 +349,7 @@ Here are some built-in methods and modules.
         // proxy: "http://127.0.0.1:5566", // proxy server
         // isSkipInsecureVerify: true,     // disable verify server certificate
         // isHttp3: true,                  // enable http3
-        // isFollowRedirect: false,        // disable follow redirect
+        // isNotFollowRedirect: true,      // disable follow redirect
     })
     const { status, header, data } = httpc.request("GET", "https://www.baidu.com")
     status // 200
