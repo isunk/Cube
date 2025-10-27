@@ -346,8 +346,10 @@ Here are some built-in methods and modules.
     const httpc = $native("http")({
         // caCert: "",                     // ca certificates for http client
         // cert: "", key: "",              // private key and certificate/public key for http client auth
-        // insecureSkipVerify: true,       // disable verify server certificate
         // proxy: "http://127.0.0.1:5566", // proxy server
+        // isSkipInsecureVerify: true,     // disable verify server certificate
+        // isHttp3: true,                  // enable http3
+        // isFollowRedirect: false,        // disable follow redirect
     })
     const { status, header, data } = httpc.request("GET", "https://www.baidu.com")
     status // 200
