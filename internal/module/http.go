@@ -88,7 +88,7 @@ func init() {
 				httpc.c.Transport = t
 			}
 
-			// 是否自动重定向，默认开启
+			// 是否自动重定向，默认关闭
 			if !options.IsFollowRedirect {
 				httpc.c.CheckRedirect = func(req *http.Request, via []*http.Request) error {
 					return http.ErrUseLastResponse // 当响应返回重定向如 302 时，禁止自动重定向
