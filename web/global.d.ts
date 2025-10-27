@@ -147,10 +147,10 @@ declare function $native(name: "file"): {
 
 type HttpOptions = Partial<{
     caCert: string;
-    insecureSkipVerify: boolean;
-    isHttp3: boolean;
     proxy: string;
-    followRedirect: boolean;
+    isSkipInsecureVerify: boolean;
+    isHttp3: boolean;
+    isFollowRedirect: boolean;
 }> | {
     cert: string;
     key: string;

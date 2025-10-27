@@ -64,8 +64,8 @@ func init() {
 			}
 
 			// 设置是否忽略服务端证书错误
-			if options.InsecureSkipVerify {
-				cc.InsecureSkipVerify = options.InsecureSkipVerify
+			if options.IsSkipInsecureVerify {
+				cc.InsecureSkipVerify = options.IsSkipInsecureVerify
 			}
 
 			// 设置是否启用 HTTP/3
@@ -88,10 +88,8 @@ func init() {
 				httpc.c.Transport = t
 			}
 
-			// 是否自动重定向
-			if options.FollowRedirect {
-				httpc.c.CheckRedirect = nil
-			} else {
+			// 是否自动重定向，默认开启
+			if !options.IsFollowRedirect {
 				httpc.c.CheckRedirect = func(req *http.Request, via []*http.Request) error {
 					return http.ErrUseLastResponse // 当响应返回重定向如 302 时，禁止自动重定向
 				}
@@ -103,13 +101,13 @@ func init() {
 }
 
 type HttpOptions struct {
-	CaCert             string
-	Cert               string
-	Key                string
-	InsecureSkipVerify bool
-	IsHttp3            bool
-	Proxy              string
-	FollowRedirect     bool
+	CaCert               string
+	Cert                 string
+	Key                  string
+	Proxy                string
+	IsSkipInsecureVerify bool
+	IsHttp3              bool
+	IsFollowRedirect     bool
 }
 
 type FormData struct {
