@@ -150,7 +150,7 @@ type HttpOptions = Partial<{
     proxy: string;
     isSkipInsecureVerify: boolean;
     isHttp3: boolean;
-    isFollowRedirect: boolean;
+    isNotFollowRedirect: boolean;
 }> | {
     cert: string;
     key: string;

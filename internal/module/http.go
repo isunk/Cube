@@ -89,7 +89,7 @@ func init() {
 			}
 
 			// 是否自动重定向，默认关闭
-			if !options.IsFollowRedirect {
+			if options.IsNotFollowRedirect {
 				httpc.c.CheckRedirect = func(req *http.Request, via []*http.Request) error {
 					return http.ErrUseLastResponse // 当响应返回重定向如 302 时，禁止自动重定向
 				}
@@ -107,7 +107,7 @@ type HttpOptions struct {
 	Proxy                string
 	IsSkipInsecureVerify bool
 	IsHttp3              bool
-	IsFollowRedirect     bool
+	IsNotFollowRedirect  bool
 }
 
 type FormData struct {
