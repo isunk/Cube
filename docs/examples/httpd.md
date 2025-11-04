@@ -5,15 +5,15 @@
     //?name=httpd&type=controller&method=GET&url=httpd/{name}&tag=http
     export default (app => app.run.bind(app))(new class {
         private filec = $native("file")
-    
+
         private imagec = $native("image")
-    
+
         private zipc = $native("zip")
-    
+
         public run(ctx: ServiceContext) {
             return this.parse(decodeURIComponent(ctx.getPathVariables().name).split("!/"), ctx)
         }
-    
+
         private parse([name, ...subnames]: string[], ctx: ServiceContext) {
             const fileType = this.toFileType(name)
             switch (fileType) {
@@ -31,7 +31,7 @@
                     return this.filec.read(name)
             }
         }
-    
+
         private toFileType(name) {
             if (name === "" || name.at(-1) === "/") {
                 return ""
@@ -50,7 +50,7 @@
             }
             return fileType
         }
-    
+
         private toImage(name: string, ctx: ServiceContext, fileType) {
             const params = ctx.getURL().params
             if (params.width) {
@@ -61,7 +61,7 @@
             }
             return this.filec.read(name)
         }
-    
+
         private toVideo(name: string, ctx: ServiceContext) {
             const fileSize = this.filec.stat(name).size()
             if (fileSize <= 1024 * 1024) {
@@ -76,7 +76,7 @@
                 start = Number(ranges[0]), end = Math.min(Number(ranges[1]) || (start + 1024 * 1024 - 1), fileSize - 1)
             return new ServiceResponse(206, { "Content-Range": `bytes ${start}-${end}/${fileSize}`, "Content-Length": end - start + 1 + "", "Content-Type": "video/mp4" }, this.filec.readRange(name, start, end - start + 1))
         }
-    
+
         private toZip(name: string, subnames: string[], ctx: ServiceContext) {
             const entries = this.zipc.read(this.filec.read(name)).getEntries()
             this.filec = {

@@ -7,7 +7,7 @@
         id: number
         name: string
     }
-    
+
     interface Media {
         id: string
         name?: string
@@ -15,18 +15,18 @@
         picture?: string
         uris?: [string, string][]
     }
-    
+
     interface Pageable<T> {
         pageCount: number
         data: T[]
     }
-    
+
     interface VODSourceInterface {
         /**
          * 查询分组
          */
         types(): Type[]
-    
+
         /**
          * 查询媒体列表
          * 
@@ -35,23 +35,23 @@
          * @params pg 页数，从 1 开始
          */
         medias(wd: string, t: string, pg: number): Pageable<Media>
-    
+
         /**
          * 查询媒体
          * @params id ID
          */
         media(id: string): Media
     }
-    
+
     export class MacCms8VODSource implements VODSourceInterface {
         private endpoint: string
-    
+
         private table = "vod" // vod（视频）、art（文章）、actor（演员）、role（角色）、website（网站）
-    
+
         constructor(endpoint: string) {
             this.endpoint = endpoint
         }
-    
+
         types(): Type[] {
             return $native("http")().request("GET", this.endpoint + "/provide/" + this.table).data.toJson().class.map(i => {
                 return {
@@ -60,7 +60,7 @@
                 }
             })
         }
-    
+
         medias(wd: string, t: string, pg: number): Pageable<Media> {
             const { pagecount: pageCount, list } = $native("http")().request("GET", this.endpoint + "/provide/" + this.table + "?" + [
                 wd && "wd=" + encodeURIComponent(wd), // wd 搜索关键词
@@ -84,7 +84,7 @@
                 }),
             }
         }
-    
+
         media(id: string): Media {
             const i = $native("http")().request("GET", `${this.endpoint}/provide/${this.table}?ids=${id}&ac=detail&at=json`).data.toJson().list[0]
             return {
@@ -96,18 +96,18 @@
             }
         }
     }
-    
+
     export class CrawlerVODSource implements VODSourceInterface {
         private endpoint: string
-    
+
         constructor(endpoint: string) {
             this.endpoint = endpoint
         }
-    
+
         types(): Type[] {
             return []
         }
-    
+
         medias(wd: string, t: string, pg: number): Pageable<Media> {
             const raw = this.fetch(`${this.endpoint}/vodtype/2${pg > 1 ? "-" + pg : ""}.html`)
             try {
@@ -126,7 +126,7 @@
                 return <Pageable<Media>><unknown>raw
             }
         }
-    
+
         media(id: string): Media {
             const raw = this.fetch(`${this.endpoint}/vodplay/${id}.html`)
             try {
@@ -140,14 +140,14 @@
                 return <Media><unknown>raw
             }
         }
-    
+
         fetch(url) {
             return $native("http")().request("GET", url, {
                 "User-Agent": "Mozilla/5.0 (compatible; MSIE 9.0; Windows NT 6.1; Trident/5.0;",
             }).data.toString()
         }
     }
-    
+
     export default (app => app.run.bind(app))(new class {
         public run(ctx: ServiceContext) {
             const params = new Proxy(ctx.getURL().params, {
@@ -164,7 +164,7 @@
             }
             return channel.types()
         }
-    
+
         private dispatch(id: number) {
             const channels = [
                 () => new MacCms8VODSource("https://api.xinlangapi.com/xinlangapi.php"),
@@ -180,7 +180,7 @@
     //?name=vodd&type=resource&lang=html&url=vodd&tag=vod
     <!DOCTYPE html>
     <html>
-    
+
     <head>
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, viewport-fit=cover" />
@@ -315,7 +315,7 @@
             }
         </style>
     </head>
-    
+
     <body v-cloak>
         <div class="search-area">
             <input type="text" v-model="keyword"></input>
@@ -430,6 +430,6 @@
             app.mount(document.body)
         </script>
     </body>
-    
+
     </html>
     ```
