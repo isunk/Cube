@@ -39,9 +39,9 @@ sequenceDiagram
 
 ## Code
 
-1. Create a template name `CASLogin`.
+1. Create a template.
     ```html
-    //?name=CASLogin&type=template&lang=html
+    //?name=casd&type=template&lang=html&tag=cas
     <!DOCTYPE html>
     <html>
 
@@ -157,7 +157,7 @@ sequenceDiagram
 
 2. Create a controller with url `/service/cas/{path}` and method `Any`.
     ```typescript
-    //?name=CASServer&type=controller&url=cas/{path}
+    //?name=casd&type=controller&url=cas/{path}&tag=cas
     const MyHost = "http://127.0.0.1:8090/service/cas/"
 
     const services: string[] = [

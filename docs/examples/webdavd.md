@@ -2,7 +2,7 @@
 
 1. Create a controller with url `/service/webdav/{path}` and method `Any`.
     ```typescript
-    //?name=WebDAV&type=controller&url=webdav/{path}
+    //?name=webdavd&type=controller&url=webdav/{path}
     export default (app => app.run.bind(app))(new class {
         private config = {
             username: "",
