@@ -6,8 +6,8 @@ import (
 )
 
 func init() {
-	Builtins = append(Builtins, func(worker Worker) {
-		runtime := worker.Runtime()
+	Builtins = append(Builtins, func(ctx Context) {
+		runtime := ctx.Worker.Runtime()
 
 		runtime.Set("Decimal", func(call goja.ConstructorCall) *goja.Object {
 			v, ok := call.Argument(0).Export().(string)

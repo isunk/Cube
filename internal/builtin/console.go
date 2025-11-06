@@ -6,8 +6,8 @@ import (
 )
 
 func init() {
-	Builtins = append(Builtins, func(worker Worker) {
-		worker.Runtime().Set("console", &ConsoleClient{worker})
+	Builtins = append(Builtins, func(ctx Context) {
+		ctx.Worker.Runtime().Set("console", &ConsoleClient{worker: ctx.Worker})
 	})
 }
 

@@ -8,12 +8,12 @@ import (
 )
 
 func init() {
-	Builtins = append(Builtins, func(worker Worker) {
-		runtime, loop := worker.Runtime(), worker.EventLoop()
+	Builtins = append(Builtins, func(ctx Context) {
+		runtime, loop := ctx.Worker.Runtime(), ctx.Worker.EventLoop()
 
 		runtime.Set("setTimeout", func(call goja.FunctionCall) goja.Value { // 此处必须返回单个 goja.Value 类型，否则将会出现异常：TypeError: 'caller', 'callee', and 'arguments' properties may not be accessed on strict mode functions or the arguments objects for calls to them at ...
 			value, _ := loop.NewTimeoutOrInterval(call, false)
-			worker.AddDefer(func() {
+			ctx.Worker.AddDefer(func() {
 				i, ok := value.(*Timeout)
 				if ok && i != nil && i.trigger.Cancel() {
 					i.timer.Stop()
@@ -29,7 +29,7 @@ func init() {
 
 		runtime.Set("setInterval", func(call goja.FunctionCall) goja.Value {
 			value, _ := loop.NewTimeoutOrInterval(call, true)
-			worker.AddDefer(func() {
+			ctx.Worker.AddDefer(func() {
 				i, ok := value.(*Interval)
 				if ok && i != nil && i.trigger.Cancel() {
 					close(i.stop)

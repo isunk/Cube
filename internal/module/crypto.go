@@ -18,7 +18,7 @@ import (
 )
 
 func init() {
-	register("crypto", func(worker Worker, db Db) interface{} {
+	register("crypto", func(ctx Context) interface{} {
 		return &CryptoClient{}
 	})
 }

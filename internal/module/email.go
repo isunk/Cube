@@ -8,7 +8,7 @@ import (
 )
 
 func init() {
-	register("email", func(worker Worker, db Db) interface{} {
+	register("email", func(ctx Context) interface{} {
 		return func(host string, port int, username string, password string) *EmailClient {
 			return &EmailClient{
 				host:     host,

@@ -7,7 +7,7 @@ import (
 )
 
 func init() {
-	register("lock", func(worker Worker, db Db) interface{} {
+	register("lock", func(ctx Context) interface{} {
 		return func(name string) *LockClient {
 			LockCache.Lock()
 			defer LockCache.Unlock()
@@ -24,7 +24,7 @@ func init() {
 				}
 				LockCache.clients[name] = client
 			}
-			worker.AddDefer(func() {
+			ctx.Worker.AddDefer(func() {
 				client.Unlock()
 			})
 			return client

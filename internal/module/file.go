@@ -13,7 +13,7 @@ import (
 )
 
 func init() {
-	register("file", func(worker Worker, db Db) interface{} {
+	register("file", func(ctx Context) interface{} {
 		return &FileClient{}
 	})
 }

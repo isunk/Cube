@@ -9,8 +9,8 @@ import (
 )
 
 func init() {
-	register("event", func(worker Worker, db Db) interface{} {
-		return &EventClient{worker}
+	register("event", func(ctx Context) interface{} {
+		return &EventClient{ctx}
 	})
 }
 
@@ -84,7 +84,7 @@ func (b *EventBus) emit(topic string, data interface{}) {
 //#endregion
 
 type EventClient struct {
-	worker Worker
+	ctx Context
 }
 
 func (c *EventClient) Emit(topic string, data interface{}) {
@@ -92,11 +92,9 @@ func (c *EventClient) Emit(topic string, data interface{}) {
 }
 
 func (c *EventClient) CreateSubscriber(topics ...string) *EventSubscriber {
-	worker := c.worker
+	s := &EventSubscriber{c.ctx.Worker.EventLoop().NewEventTaskTrigger(), make(chan interface{}), make(chan struct{}, 1)}
 
-	s := &EventSubscriber{worker.EventLoop().NewEventTaskTrigger(), make(chan interface{}), make(chan struct{}, 1)}
-
-	worker.AddDefer(s.Cancel)
+	c.ctx.Worker.AddDefer(s.Cancel)
 
 	for _, topic := range topics {
 		MyEventBus.subscribe(topic, s)
@@ -109,18 +107,18 @@ func (c *EventClient) On(call goja.FunctionCall) goja.Value { // 见 goja.Runtim
 	// 主题
 	topic, ok := call.Argument(0).Export().(string)
 	if !ok {
-		c.worker.Interrupt("invalid argument topic, not a string")
+		c.ctx.Worker.Interrupt("invalid argument topic, not a string")
 		return nil
 	}
 
 	// 回调方法
 	fn, ok := goja.AssertFunction(call.Argument(1))
 	if !ok {
-		c.worker.Interrupt("invalid argument callback, not a function")
+		c.ctx.Worker.Interrupt("invalid argument callback, not a function")
 		return nil
 	}
 
-	runtime := c.worker.Runtime()
+	runtime := c.ctx.Worker.Runtime()
 
 	s := c.CreateSubscriber(topic)
 

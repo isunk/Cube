@@ -27,6 +27,25 @@ interface DateConstructor {
     toDate(value: string, layout: string): Date
 }
 
+type DatabaseTransaction = {
+    query(stmt: string, ...params: any[]): any[];
+    exec(stmt: string, ...params: any[]): number;
+    commit(): void;
+    rollback(): void;
+}
+declare class DatabaseClient {
+    constructor(type: "sqlite3" | "mysql", connection: string);
+    /**
+     * begin a transaction
+     *
+     * @param func function during this transaction
+     * @param isolation transaction isolation level: 0 = Default, 1 = Read Uncommitted, 2 = Read Committed, 3 = Write Committed, 4 = Repeatable Read, 5 = Snapshot, 6 = Serializable, 7 = Linearizable
+     */
+    transaction(func: (tx: DatabaseTransaction) => void, isolation: number = 0): void;
+    query(stmt: string, ...params: any[]): any[];
+    exec(stmt: string, ...params: any[]): number;
+}
+
 declare class Decimal {
     constructor(value: string);
     add(value: Decimal): Decimal;
@@ -99,21 +118,7 @@ declare function $native(name: "crypto"): {
     };
 }
 
-type DatabaseTransaction = {
-    query(stmt: string, ...params: any[]): any[];
-    exec(stmt: string, ...params: any[]): number;
-    commit(): void;
-    rollback(): void;
-}
-declare function $native(name: "db"): {
-    /**
-     * begin a transaction
-     *
-     * @param func function during this transaction
-     * @param isolation transaction isolation level: 0 = Default, 1 = Read Uncommitted, 2 = Read Committed, 3 = Write Committed, 4 = Repeatable Read, 5 = Snapshot, 6 = Serializable, 7 = Linearizable
-     */
-    transaction(func: (tx: DatabaseTransaction) => void, isolation: number = 0): void;
-} & Pick<DatabaseTransaction, "query" | "exec">
+declare function $native(name: "db"): DatabaseClient
 
 declare function $native(name: "email"): (host: string, port: number, username: string, password: string) => {
     send(receivers: string[], subject: string, content: string, attachments: { Name: string; ContentType: string; Base64: string; }[]): void;

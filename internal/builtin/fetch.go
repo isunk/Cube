@@ -9,8 +9,8 @@ import (
 )
 
 func init() {
-	Builtins = append(Builtins, func(worker Worker) {
-		worker.Runtime().Set("fetch", func(url string, options *FetchOptions) (*goja.Promise, error) {
+	Builtins = append(Builtins, func(ctx Context) {
+		ctx.Worker.Runtime().Set("fetch", func(url string, options *FetchOptions) (*goja.Promise, error) {
 			if options == nil {
 				options = &FetchOptions{
 					Method: "GET",
@@ -25,10 +25,10 @@ func init() {
 				req.Header.Set(k, v)
 			}
 
-			runtime := worker.Runtime()
+			runtime := ctx.Worker.Runtime()
 			promise, resolve, reject := runtime.NewPromise()
 
-			t := worker.EventLoop().NewEventTaskTrigger()
+			t := ctx.Worker.EventLoop().NewEventTaskTrigger()
 			t.AddTask(func() {
 				c := &http.Client{}
 

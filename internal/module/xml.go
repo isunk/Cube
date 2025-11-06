@@ -8,7 +8,7 @@ import (
 )
 
 func init() {
-	register("xml", func(worker Worker, db Db) interface{} {
+	register("xml", func(ctx Context) interface{} {
 		return func(content string) (*XmlNode, error) {
 			d, err := htmlquery.Parse(strings.NewReader(content))
 			return (*XmlNode)(d), err

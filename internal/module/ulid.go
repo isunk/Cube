@@ -7,7 +7,7 @@ import (
 )
 
 func init() {
-	register("ulid", func(worker Worker, db Db) interface{} {
+	register("ulid", func(ctx Context) interface{} {
 		return CreateULID
 	})
 }

@@ -18,7 +18,7 @@ import (
 )
 
 func init() {
-	register("image", func(worker Worker, db Db) interface{} {
+	register("image", func(ctx Context) interface{} {
 		return &ImageClient{}
 	})
 }

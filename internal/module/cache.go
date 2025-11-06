@@ -8,7 +8,7 @@ import (
 var cache = NewMemoryCache()
 
 func init() {
-	register("cache", func(worker Worker, db Db) interface{} {
+	register("cache", func(ctx Context) interface{} {
 		return &cache
 	})
 }

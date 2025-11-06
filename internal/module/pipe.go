@@ -1,7 +1,7 @@
 package module
 
 func init() {
-	register("pipe", func(worker Worker, db Db) interface{} {
+	register("pipe", func(ctx Context) interface{} {
 		return func(name string) *BlockingQueueClient {
 			if PipeCache == nil {
 				PipeCache = make(map[string]*BlockingQueueClient, 99)

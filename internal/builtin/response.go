@@ -2,15 +2,14 @@ package builtin
 
 import (
 	"net/http"
-	"reflect"
 
 	"cube/internal/util"
 	"github.com/dop251/goja"
 )
 
 func init() {
-	Builtins = append(Builtins, func(worker Worker) {
-		runtime := worker.Runtime()
+	Builtins = append(Builtins, func(ctx Context) {
+		runtime := ctx.Worker.Runtime()
 
 		runtime.Set("ServiceResponse", func(call goja.ConstructorCall) *goja.Object { // 内置构造器不能同时返回 error 类型，否则将会失效
 			output := &ServiceResponse{}
@@ -39,21 +38,11 @@ func init() {
 			}
 
 			// 消息体
-			if v, err := util.ExportGojaValue(call.Argument(2)); v != nil {
+			if data, err := util.ExportGojaValue(call.Argument(2)); data != nil {
 				if err != nil {
 					panic(runtime.NewTypeError(err))
 				}
-				if s, ok := v.(string); ok {
-					output.data = []byte(s)
-				} else if b, ok := v.(Buffer); ok {
-					output.data = []byte(b)
-				} else if b, ok := v.(*Buffer); ok {
-					output.data = []byte(*b)
-				} else if t, ok := v.([]byte); ok {
-					output.data = t
-				} else {
-					panic(runtime.NewTypeError("invalid body type: " + reflect.TypeOf(v).String()))
-				}
+				output.data = data
 			}
 
 			iv := runtime.ToValue(output).(*goja.Object)
@@ -66,7 +55,7 @@ func init() {
 type ServiceResponse struct {
 	status  int
 	header  map[string]string
-	data    []byte
+	data    interface{}
 	cookies []*http.Cookie
 }
 
@@ -81,7 +70,7 @@ func (s *ServiceResponse) SetHeader(name string, value string) { // 设置响应
 	s.header[name] = value
 }
 
-func (s *ServiceResponse) SetData(data []byte) { // 设置响应消息体
+func (s *ServiceResponse) SetData(data interface{}) { // 设置响应消息体
 	s.data = data
 }
 
@@ -96,7 +85,7 @@ func (s *ServiceResponse) SetCookie(name string, value string) { // 设置 Cooki
 	s.cookies = append(s.cookies, cookie)
 }
 
-func ResponseWithServiceResponse(w http.ResponseWriter, v *ServiceResponse) {
+func PreHandleServiceResponse(w http.ResponseWriter, v *ServiceResponse) interface{} {
 	// header
 	h := w.Header()
 	for k, v := range v.header {
@@ -112,5 +101,5 @@ func ResponseWithServiceResponse(w http.ResponseWriter, v *ServiceResponse) {
 	w.WriteHeader(v.status) // WriteHeader 必须在 Set Header 之后调用，否则状态码将无法写入
 
 	// data
-	w.Write(v.data) // Write 必须在 WriteHeader 之后调用，否则将会抛出异常 http: superfluous response.WriteHeader call from ...
+	return v.data // Write 必须在 WriteHeader 之后调用，否则将会抛出异常 http: superfluous response.WriteHeader call from ...
 }

@@ -6,8 +6,8 @@ import (
 )
 
 func init() {
-	Builtins = append(Builtins, func(worker Worker) {
-		runtime := worker.Runtime()
+	Builtins = append(Builtins, func(ctx Context) {
+		runtime := ctx.Worker.Runtime()
 
 		runtime.Set("WebSocket", func(call goja.ConstructorCall) *goja.Object {
 			url, ok := call.Argument(0).Export().(string)

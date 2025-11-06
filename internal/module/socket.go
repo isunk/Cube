@@ -11,13 +11,13 @@ import (
 )
 
 func init() {
-	register("socket", func(worker Worker, db Db) interface{} {
+	register("socket", func(ctx Context) interface{} {
 		return func(protocol string) (interface{}, error) {
 			if protocol == "tcp" {
-				return &TCPSocket{worker}, nil
+				return &TCPSocket{ctx}, nil
 			}
 			if protocol == "udp" {
-				return &UDPSocket{worker}, nil
+				return &UDPSocket{ctx}, nil
 			}
 			return nil, errors.New("unsupported protocol: must be tcp or udp")
 		}
@@ -27,7 +27,7 @@ func init() {
 //#region TCP
 
 type TCPSocket struct {
-	worker Worker
+	ctx Context
 }
 
 func (s *TCPSocket) Dial(host string, port int) (*TCPSocketConnection, error) {
@@ -47,7 +47,7 @@ func (s *TCPSocket) Listen(port int) (*TCPSocketListener, error) {
 		return nil, err
 	}
 
-	s.worker.AddDefer(func() {
+	s.ctx.Worker.AddDefer(func() {
 		listener.Close()
 	})
 
@@ -111,7 +111,7 @@ func (s *TCPSocketConnection) Close() {
 //#region UDP
 
 type UDPSocket struct {
-	worker Worker
+	ctx Context
 }
 
 func (s *UDPSocket) Dial(host string, port int) (*UDPSocketConnection, error) {
@@ -144,7 +144,7 @@ func (s *UDPSocket) Listen(port int) (*UDPSocketConnection, error) {
 		return nil, err
 	}
 
-	s.worker.AddDefer(func() {
+	s.ctx.Worker.AddDefer(func() {
 		conn.Close()
 	})
 
@@ -167,7 +167,7 @@ func (s *UDPSocket) ListenMulticast(host string, port int) (*UDPSocketConnection
 		return nil, err
 	}
 
-	s.worker.AddDefer(func() {
+	s.ctx.Worker.AddDefer(func() {
 		conn.Close()
 	})
 

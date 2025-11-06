@@ -10,7 +10,7 @@ import (
 )
 
 func init() {
-	register("zip", func(worker Worker, db Db) interface{} {
+	register("zip", func(ctx Context) interface{} {
 		return &ZipClient{}
 	})
 }

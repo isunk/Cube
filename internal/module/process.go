@@ -8,13 +8,13 @@ import (
 )
 
 func init() {
-	register("process", func(worker Worker, db Db) interface{} {
-		return &ProcessClient{worker}
+	register("process", func(ctx Context) interface{} {
+		return &ProcessClient{ctx}
 	})
 }
 
 type ProcessClient struct {
-	worker Worker
+	ctx Context
 }
 
 func (p *ProcessClient) Exec(command string, params ...string) (*builtin.Buffer, error) {
@@ -26,11 +26,11 @@ func (p *ProcessClient) Exec(command string, params ...string) (*builtin.Buffer,
 }
 
 func (p *ProcessClient) Pexec(command string, params ...string) *goja.Promise {
-	runtime := p.worker.Runtime()
+	runtime := p.ctx.Worker.Runtime()
 
 	promise, resolve, reject := runtime.NewPromise()
 
-	t := p.worker.EventLoop().NewEventTaskTrigger()
+	t := p.ctx.Worker.EventLoop().NewEventTaskTrigger()
 
 	t.AddTask(func() {
 		output, err := exec.Command(command, params...).Output()

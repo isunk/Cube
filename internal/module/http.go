@@ -18,7 +18,7 @@ import (
 )
 
 func init() {
-	register("http", func(worker Worker, db Db) interface{} {
+	register("http", func(ctx Context) interface{} {
 		return func(options *HttpOptions) (*HttpClient, error) {
 			httpc := &HttpClient{c: &http.Client{}}
 

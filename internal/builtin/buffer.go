@@ -10,8 +10,8 @@ import (
 )
 
 func init() {
-	Builtins = append(Builtins, func(worker Worker) {
-		runtime := worker.Runtime()
+	Builtins = append(Builtins, func(ctx Context) {
+		runtime := ctx.Worker.Runtime()
 
 		o := runtime.ToValue(func(call goja.ConstructorCall) *goja.Object {
 			return runtime.ToValue(&Buffer{}).ToObject(runtime)

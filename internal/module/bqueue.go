@@ -7,7 +7,7 @@ import (
 )
 
 func init() {
-	register("bqueue", func(worker Worker, db Db) interface{} {
+	register("bqueue", func(ctx Context) interface{} {
 		return func(size int) *BlockingQueueClient {
 			return &BlockingQueueClient{
 				queue: make(chan interface{}, size),

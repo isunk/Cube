@@ -45,9 +45,15 @@ func Success(w http.ResponseWriter, data interface{}) {
 		w.Write(v)
 	case *builtin.Buffer:
 		w.Write(*v)
-	case *builtin.ServiceResponse: // 自定义响应
-		builtin.ResponseWithServiceResponse(w, v)
 	default: // map[string]interface[]
+		if r, ok := v.(*builtin.ServiceResponse); ok { // 自定义响应
+			if d, ok := builtin.PreHandleServiceResponse(w, r).(*builtin.ServiceResponse); !ok {
+				Success(w, d)
+				return
+			} else {
+				v = d
+			}
+		}
 		w.Header().Set("Content-Type", "application/json")
 		enc := json.NewEncoder(w)
 		enc.SetEscapeHTML(false) // 见 https://pkg.go.dev/encoding/json#Marshal，字符串值编码为强制为有效 UTF-8 的 JSON 字符串，用 Unicode 替换符文替换无效字节。为了使 JSON 能够安全地嵌入 HTML 标记中，字符串使用 HTMLEscape 编码，它将替换 `<`、`>`、`&`、`U+2028` 和 `U+2029`，并转义到 `\u003c`、`\u003e`、`\u0026`、`\u2028` 和 `\u2029`。在使用编码器时，可以通过调用 SetEscapeHTML(false) 禁用此替换。

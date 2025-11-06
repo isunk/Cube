@@ -11,8 +11,8 @@ import (
 )
 
 func init() {
-	Builtins = append(Builtins, func(worker Worker) {
-		runtime := worker.Runtime()
+	Builtins = append(Builtins, func(ctx Context) {
+		runtime := ctx.Worker.Runtime()
 
 		runtime.Get("Date").ToObject(runtime).Get("prototype").ToObject(runtime).Set("toString", func(call goja.FunctionCall) goja.Value {
 			t, ok := call.This.Export().(time.Time)

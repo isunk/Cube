@@ -18,6 +18,7 @@ require (
 )
 
 require (
+	filippo.io/edwards25519 v1.1.0 // indirect
 	github.com/go-task/slim-sprig/v3 v3.0.0 // indirect
 	go.uber.org/mock v0.5.0 // indirect
 	golang.org/x/sync v0.16.0 // indirect
@@ -28,6 +29,7 @@ require (
 	github.com/dlclark/regexp2 v1.11.5 // indirect
 	github.com/go-ole/go-ole v1.2.6 // indirect
 	github.com/go-sourcemap/sourcemap v2.1.4+incompatible // indirect
+	github.com/go-sql-driver/mysql v1.9.3
 	github.com/golang/freetype v0.0.0-20170609003504-e2365dfdc4a0
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
 	github.com/google/pprof v0.0.0-20250630185457-6e76a2b096b5 // indirect
