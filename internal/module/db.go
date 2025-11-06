@@ -6,7 +6,6 @@ import (
 
 func init() {
 	register("db", func(ctx Context) interface{} {
-		dbc := builtin.NewDatabaseClient(ctx)
-		return &dbc
+		return builtin.NewDatabaseClient(ctx)
 	})
 }

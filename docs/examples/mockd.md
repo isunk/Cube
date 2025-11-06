@@ -15,6 +15,9 @@
                 return this.setup()
             }
             if ("test" in forms || name) {
+                if (ctx.getMethod() === "OPTIONS") {
+                    return new ServiceResponse(200, { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "*", "Access-Control-Allow-Headers": "*" })
+                }
                 return this.test(name || forms.u, forms.c, forms.b ?? ctx.getBody()?.toString())
             }
             switch (ctx.getMethod()) {
@@ -37,7 +40,8 @@
                 CREATE TABLE IF NOT EXISTS MockGroup (
                     Name VARCHAR(64) PRIMARY KEY NOT NULL,
                     Active BOOLEAN NOT NULL DEFAULT false,
-                    Storage TEXT NOT NULL DEFAULT ''
+                    Storage TEXT NOT NULL DEFAULT '',
+                    PreRequestScript TEXT NOT NULL DEFAULT ''
                 );
                 DROP TABLE IF EXISTS MockService;
                 CREATE TABLE IF NOT EXISTS MockService (
@@ -59,10 +63,11 @@
                     s.StatusCode status,
                     s.Headers headers,
                     s.Body body,
-                    s.PreResponseScript script,
+                    s.PreResponseScript preResponseScript,
                     s.Settings settings,
                     s.GroupId groupId,
-                    g.Storage storage
+                    g.Storage storage,
+                    g.PreRequestScript preRequestScript
                 FROM
                     MockService s
                     LEFT JOIN MockGroup g ON s.GroupId = g.rowid
@@ -79,20 +84,31 @@
             if (settings.time) {
                 setTimeout(() => { }, settings.time)
             }
-            const input = requestBody && JSON.parse(decodeURIComponent(requestBody)),
-                output = this.json52any(service.body || "{}"),
-                session = JSON.parse(service.storage || "{}"),
-                status = service.status || 200,
-                headers = JSON.parse(service.headers || "{}"),
-                body = service.script && (new Function("input", "output", "session", service.script))(input, output, session) || output,
-                storage = JSON.stringify(session)
-            if (storage !== service.storage) {
-                this.db.exec(`UPDATE MockGroup SET Storage = ? WHERE rowid = ?`, storage, service.groupId)
+            const context = {
+                request: {
+                    body: requestBody && JSON.parse(decodeURIComponent(requestBody)),
+                },
+                response: {
+                    status: service.status || 200,
+                    headers: JSON.parse(service.headers || "{}"),
+                    body: !!~service.headers.indexOf("json") ? this.json52any(service.body || "{}") : service.body,
+                },
+                storage: JSON.parse(service.storage || "{}"),
+            }
+            if (service.preRequestScript) {
+                context.response.body = (new Function("$", service.preRequestScript))(context) ?? context.response.body
+            }
+            if (service.preResponseScript) {
+                context.response.body = (new Function("$", service.preResponseScript))(context) ?? context.response.body
+            }
+            const newStorage = JSON.stringify(context.storage)
+            if (newStorage !== service.storage) {
+                this.db.exec(`UPDATE MockGroup SET Storage = ? WHERE rowid = ?`, newStorage, service.groupId)
             }
             if (callback) {
-                return new ServiceResponse(200, undefined, `mockc.callbacks["${callback}"](${JSON.stringify({ status, headers, body })})`)
+                return new ServiceResponse(200, undefined, `mockc.callbacks["${callback}"](${JSON.stringify(context.response)})`)
             }
-            return new ServiceResponse(status, { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "*", "Access-Control-Allow-Headers": "*", ...headers }, JSON.stringify(body))
+            return new ServiceResponse(context.response.status, { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "*", "Access-Control-Allow-Headers": "*", ...context.response.headers }, JSON.stringify(context.response.body))
         }
 
         public post(input: Group | Service | Service[]) {
@@ -102,7 +118,7 @@
                 } else {
                     this.db.transaction(tx => {
                         input = input as Group
-                        this.db.exec(`INSERT INTO MockGroup (Name, Active, Storage) VALUES (?, ?, ?)`, input.name, input.active, input.storage)
+                        this.db.exec(`INSERT INTO MockGroup (Name, Active, Storage, PreRequestScript) VALUES (?, ?, ?, ?)`, input.name, input.active, input.storage, input.preRequestScript)
                         if (input.active) {
                             const id = tx.query("SELECT last_insert_rowid() id")[0].id
                             tx.exec(`UPDATE MockGroup SET Active = 0 WHERE rowid <> ?`, id)
@@ -118,7 +134,7 @@
                 s.status,
                 s.headers,
                 s.body,
-                s.script,
+                s.preResponseScript,
                 s.settings,
             ]).flat())
         }
@@ -147,17 +163,17 @@
                     input.status,
                     input.headers,
                     input.body,
-                    input.script,
+                    input.preResponseScript,
                     input.settings,
                     input.id,
                 )
             }
-            return this.db.exec(`UPDATE MockGroup SET Name = ?, Active = ?, Storage = ? WHERE rowid = ?`, input.name, input.active, input.storage, input.id)
+            return this.db.exec(`UPDATE MockGroup SET Name = ?, Active = ?, Storage = ?, PreRequestScript = ? WHERE rowid = ?`, input.name, input.active, input.storage, input.preRequestScript, input.id)
         }
 
         public get(group?: string): Group[] | Service[] {
             if (group) {
-                return this.db.query(`SELECT rowid, GroupId, Active, URL, StatusCode, Headers, Body, PreResponseScript, Settings FROM MockService WHERE GroupId = ?`, group).map(i => {
+                return this.db.query(`SELECT rowid, GroupId, Active, URL, StatusCode, Headers, Body, PreResponseScript, Settings FROM MockService WHERE GroupId = ? ORDER BY URL`, group).map(i => {
                     return {
                         id: i.rowid,
                         group: i.GroupId,
@@ -166,17 +182,18 @@
                         status: i.StatusCode,
                         headers: i.Headers,
                         body: i.Body,
-                        script: i.PreResponseScript,
+                        preResponseScript: i.PreResponseScript,
                         settings: i.Settings,
                     }
                 })
             }
-            return this.db.query(`SELECT rowid, Name, Active, Storage FROM MockGroup`).map(i => {
+            return this.db.query(`SELECT rowid, Name, Active, Storage, PreRequestScript FROM MockGroup`).map(i => {
                 return {
                     id: i.rowid,
                     name: i.Name,
                     active: i.Active,
                     storage: i.Storage,
+                    preRequestScript: i.PreRequestScript,
                 }
             })
         }
@@ -195,6 +212,7 @@
         name: string
         active: boolean
         storage: string
+        preRequestScript: string
     }
 
     type Service = {
@@ -205,7 +223,7 @@
         status: number
         headers: string
         body: string
-        script: string
+        preResponseScript: string
         settings: string
     }
     ```
@@ -218,6 +236,7 @@
 
     <head>
         <meta charset="UTF-8">
+        <meta name="viewport" content="maximum-scale=1.0">
         <link rel="stylesheet" href="/libs/element-plus/2.10.5/index.min.css" />
         <script src="/libs/vue/3.5.18/vue.global.prod.min.js"></script>
         <!-- <script src="https://cdn.bootcdn.net/ajax/libs/vue/3.5.18/vue.global.min.js"></script> -->
@@ -341,6 +360,10 @@
                             <monaco-editor v-model="group.dialog.draft.storage" height="500px"
                                 language="json"></monaco-editor>
                         </el-tab-pane>
+                        <el-tab-pane label="Pre-Request Script" lazy>
+                            <monaco-editor v-model="group.dialog.draft.preRequestScript" height="500px"
+                                language="typescript"></monaco-editor>
+                        </el-tab-pane>
                     </el-tabs>
                     <el-form-item style="margin: 12px 0 0 0;">
                         <div style="width: 100%; display: flex; justify-content: flex-end;">
@@ -358,7 +381,7 @@
                     <el-tabs tab-position="left" style="height: 500px;">
                         <el-tab-pane label="Body" lazy>
                             <monaco-editor v-model="service.dialog.draft.body" height="500px"
-                                language="json5"></monaco-editor>
+                                :language="!!~service.dialog.draft.headers.indexOf('json') ? 'json5' : 'html'"></monaco-editor>
                         </el-tab-pane>
                         <el-tab-pane label="Headers" lazy>
                             <monaco-editor v-model="service.dialog.draft.headers" height="500px"
@@ -369,8 +392,8 @@
                                 autocomplete="off"></el-input>
                         </el-tab-pane>
                         <el-tab-pane label="Pre-Response Script" lazy>
-                            <monaco-editor v-model="service.dialog.draft.script" height="500px"
-                                language="javascript"></monaco-editor>
+                            <monaco-editor v-model="service.dialog.draft.preResponseScript" height="500px"
+                                language="typescript"></monaco-editor>
                         </el-tab-pane>
                         <el-tab-pane label="Settings" lazy>
                             <el-form label-width="auto" style="max-width: 360px;">
@@ -462,6 +485,7 @@
                         this.group.dialog.draft = {
                             name: new Date().toISOString().replace(/[-T:\.Z]/g, ""),
                             storage: "",
+                            preRequestScript: "",
                             ...this.group.record,
                             active: true,
                         }
@@ -535,7 +559,8 @@
                                     method: "POST",
                                     body: JSON.stringify(entries.filter(i => i._resourceType === "xhr").map(i => {
                                         return {
-                                            active: false,
+                                            group: $group.id,
+                                            active: true,
                                             url: i.request.url.replace(/^https?:\/\/[^\/]+/, "").replace(/\?.*$/, ""),
                                             status: i.response.status,
                                             headers: JSON.stringify(i.response.headers.filter(i => that.constants.HEADER_WHITELIST.includes(i.name.toUpperCase())).reduce((p, c) => {
@@ -543,7 +568,7 @@
                                                 return p
                                             }, {})),
                                             body: i.response.content?.text,
-                                            script: i.$script,
+                                            preResponseScript: i.$preResponseScript,
                                             settings: JSON.stringify(i.$settings),
                                         }
                                     })),
@@ -584,7 +609,7 @@
                                         },
                                         time: i.settings.time ?? 0,
                                         $settings: i.settings,
-                                        $script: i.script,
+                                        $preResponseScript: i.preResponseScript,
                                     }
                                 })
                             }
@@ -632,7 +657,7 @@
                                             return p
                                         }, {})),
                                         body: i.response.content?.text,
-                                        script: i.$script,
+                                        preResponseScript: i.$preResponseScript,
                                         settings: JSON.stringify(i.$settings),
                                     }
                                 })),
@@ -667,7 +692,7 @@
                                 "Content-Type":"application/json; charset=utf-8",
                             }, undefined, 2),
                             body: "{}",
-                            script: "",
+                            preResponseScript: "",
                             settings: {
                                 name: "",
                                 time: 0,
@@ -857,6 +882,9 @@
                                             language: props.language,
                                             value: props.modelValue,
                                         })
+                                        if (props.language === "typescript") {
+                                            monaco.languages.typescript.typescriptDefaults.addExtraLib(`declare var $ = { request?: { body?: any, }, response: { headers: any, body: any, }, storage: any, session?: any }`, "global.ts")
+                                        }
                                         editor.onDidChangeModelContent(() => {
                                             emit("update:modelValue", editor.getValue())
                                         })
