@@ -47,7 +47,8 @@ func Success(w http.ResponseWriter, data interface{}) {
 		w.Write(*v)
 	default: // map[string]interface[]
 		if r, ok := v.(*builtin.ServiceResponse); ok { // 自定义响应
-			if d, ok := builtin.PreHandleServiceResponse(w, r).(*builtin.ServiceResponse); !ok {
+			d := builtin.PreHandleServiceResponse(w, r)
+			if _, ok := d.(*builtin.ServiceResponse); !ok {
 				Success(w, d)
 				return
 			} else {
