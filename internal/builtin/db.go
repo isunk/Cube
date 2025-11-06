@@ -15,7 +15,7 @@ func init() {
 	Builtins = append(Builtins, func(ctx Context) {
 		runtime := ctx.Worker.Runtime()
 
-		runtime.Set("DatabaseClient", func(call goja.ConstructorCall) *goja.Object {
+		runtime.Set("Database", func(call goja.ConstructorCall) *goja.Object {
 			dtype, ok := call.Argument(0).Export().(string)
 			if !ok {
 				panic(runtime.NewTypeError("invalid database type: not a string"))

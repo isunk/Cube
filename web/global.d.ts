@@ -33,7 +33,13 @@ type DatabaseTransaction = {
     commit(): void;
     rollback(): void;
 }
-declare class DatabaseClient {
+declare class Database {
+    /**
+     * create a database client
+     * 
+     * @param type database type: "sqlite3" or "mysql"
+     * @param connection connection string
+     */
     constructor(type: "sqlite3" | "mysql", connection: string);
     /**
      * begin a transaction
