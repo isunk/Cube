@@ -1,11 +1,12 @@
 package internal
 
 import (
-	"regexp"
-
 	"cube/internal/model"
+	"database/sql"
+	"errors"
 	"github.com/dop251/goja"
 	"github.com/robfig/cron/v3"
+	"regexp"
 )
 
 var Cache *CacheClient
@@ -16,6 +17,7 @@ func InitCache() {
 		Crontabs:    make(map[string]cron.EntryID),
 		Daemons:     make(map[string]*Worker),
 		Modules:     make(map[string]*goja.Program),
+		DbSources:   make(map[string]*sql.DB),
 	}
 	Cache.InitRoutes()
 }
@@ -26,6 +28,7 @@ type CacheClient struct {
 	Crontabs    map[string]cron.EntryID
 	Daemons     map[string]*Worker
 	Modules     map[string]*goja.Program
+	DbSources   map[string]*sql.DB
 }
 
 func (s *CacheClient) GetController(name string) *model.Source {
@@ -79,4 +82,26 @@ func (s *CacheClient) GetRoute(path string) (string, map[string]string) {
 	}
 
 	return "", nil
+}
+
+func (s *CacheClient) GetDbSource(dbType string, connection string) (db *sql.DB, err error) {
+	if db = s.DbSources[connection]; db == nil {
+		switch dbType {
+		case "sqlite3":
+			db, err = sql.Open("sqlite3", connection)
+		case "mysql":
+			db, err = sql.Open("mysql", connection)
+		default:
+			err = errors.New("invalid database type: only 'sqlite' and 'mysql' are supported")
+		}
+		if err != nil {
+			return
+		}
+		s.DbSources[connection] = db
+	}
+	if err = db.Ping(); err != nil {
+		delete(s.DbSources, connection)
+		return
+	}
+	return
 }

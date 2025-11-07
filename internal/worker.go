@@ -199,6 +199,7 @@ func CreateWorker(program *goja.Program, id int) *Worker {
 	ctx := builtin.Context{
 		Worker: &worker,
 		Db:     Db,
+		Cache:  Cache,
 	}
 	runtime.Set("$native", func(name string) (interface{}, error) {
 		// 通过 Set 方法内置的 []byte 类型的变量或方法：

@@ -28,17 +28,37 @@ interface DateConstructor {
 }
 
 type DatabaseTransaction = {
+    /**
+     * query data
+     * 
+     * @param stmt statement
+     * @param params parameters
+     * @return query result rows
+     */
     query(stmt: string, ...params: any[]): any[];
+    /**
+     * execute statement
+     * 
+     * @param stmt statement
+     * @param params parameters
+     * @return number of affected rows
+     */
     exec(stmt: string, ...params: any[]): number;
+    /**
+     * commit this transaction
+     */
     commit(): void;
+    /**
+     * rollback this transaction
+     */
     rollback(): void;
 }
 declare class Database {
     /**
      * create a database client
      * 
-     * @param type database type: "sqlite3" or "mysql"
-     * @param connection connection string
+     * @param type database type, e.g. "sqlite3", "mysql"
+     * @param connection connection string, e.g. "mydb.db" for sqlite3, "username:password@tcp(127.0.0.1:3307)/dbname" for mysql
      */
     constructor(type: "sqlite3" | "mysql", connection: string);
     /**
@@ -48,7 +68,21 @@ declare class Database {
      * @param isolation transaction isolation level: 0 = Default, 1 = Read Uncommitted, 2 = Read Committed, 3 = Write Committed, 4 = Repeatable Read, 5 = Snapshot, 6 = Serializable, 7 = Linearizable
      */
     transaction(func: (tx: DatabaseTransaction) => void, isolation: number = 0): void;
+    /**
+     * query data
+     * 
+     * @param stmt statement
+     * @param params parameters
+     * @return query result rows
+     */
     query(stmt: string, ...params: any[]): any[];
+    /**
+     * execute statement
+     * 
+     * @param stmt statement
+     * @param params parameters
+     * @return number of affected rows
+     */
     exec(stmt: string, ...params: any[]): number;
 }
 

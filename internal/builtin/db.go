@@ -26,18 +26,7 @@ func init() {
 				panic(runtime.NewTypeError("invalid connection: not a string"))
 			}
 
-			var (
-				db  *sql.DB = nil
-				err error   = nil
-			)
-			switch dtype {
-			case "sqlite3":
-				db, err = sql.Open("sqlite3", connection)
-			case "mysql":
-				db, err = sql.Open("mysql", connection)
-			default:
-				panic(runtime.NewTypeError("invalid database type: only 'sqlite' and 'mysql' are supported"))
-			}
+			db, err := ctx.Cache.GetDbSource(dtype, connection)
 			if err != nil {
 				panic(runtime.NewTypeError("invalid connection: connect failed"))
 			}
