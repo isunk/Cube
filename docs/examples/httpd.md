@@ -28,7 +28,14 @@
                         return this.toZip(name, subnames, ctx)
                     }
                 default:
-                    return this.filec.read(name)
+                    const mime = {
+                        "svg": "image/svg+xml",
+                    }[fileType]
+                    return new ServiceResponse(200, {
+                        ...mime && {
+                            "Content-Type": mime,
+                        }
+                    }, this.filec.read(name))
             }
         }
 
