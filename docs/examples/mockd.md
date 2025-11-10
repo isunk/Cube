@@ -805,9 +805,9 @@
                                     }
                                     return map.get(src)
                                 }
-                            require("/libs/monaco-editor/0.52.2/min/vs/loader.js")
+                            require("/libs/monaco-editor/0.54.0/min/vs/loader.js")
                                 .then(() => {
-                                    window.require.config({ paths: { vs: window.location.origin + "/libs/monaco-editor/0.52.2/min/vs" } })
+                                    window.require.config({ paths: { vs: window.location.origin + "/libs/monaco-editor/0.54.0/min/vs" } })
                                 })
                                 .then(() => {
                                     window.require(["vs/editor/editor.main"], () => {
