@@ -177,7 +177,7 @@
 
                     // 预加载自定义模块
                     fetch("source?type=module&size=999&content").then(r => r.json()).then(r => {
-                        r.data.sources?.forEach(s => {
+                        r.data.sources?.filter(i => i.name !== that.input.name || i.type !== that.input.type)?.forEach(s => {
                             monaco.languages.typescript.typescriptDefaults.addExtraLib(s.content, s.name + ".ts")
                         })
                     })
