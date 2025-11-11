@@ -62,17 +62,12 @@
             <div style="margin-top: 10px; overflow: auto; white-space: nowrap; flex-grow: 1;"></div>
         </div>
     </div>
-
     <script src="/libs/typescript/5.9.2/typescript.min.js"></script>
-
     <script src="/libs/sweetalert/2.1.2/sweetalert.min.js"></script>
-
-    <script>var require = { paths: { "vs": window.location.origin + "/libs/monaco-editor/0.54.0/min/vs" } }</script>
     <script src="/libs/monaco-editor/0.54.0/min/vs/loader.js"></script>
-    <script src="/libs/monaco-editor/0.54.0/min/vs/editor/editor.main.js"></script>
-
     <script>
-        ({
+        require.config({ paths: { "vs": window.location.origin + "/libs/monaco-editor/0.54.0/min/vs" } })
+        require(["vs/editor/editor.main"], (app => app.mount.bind(app))({
             // 示例模板代码
             examples: {
                 controller: `export default function (ctx: ServiceContext): ServiceResponse | Uint8Array | any {\n    return "hello, world"\n}`,
@@ -388,10 +383,10 @@
                     }
                     if (r.message === "source version conflict") {
                         return swal("Source version is conflict, continue to submit?", {
-	                        buttons: {
-		                        cancel: true,
-		                        submit: true,
-	                        },
+                            buttons: {
+                                cancel: true,
+                                submit: true,
+                            },
                         }).then(value => value && this.submit(content, compiled, ""))
                     }
                     throw new Error(r.message)
@@ -450,7 +445,7 @@
                 this.vdata.loading = false
                 document.querySelector("#btn").style.removeProperty("display")
             },
-        }).mount()
+        }))
     </script>
 </body>
 
