@@ -5,7 +5,7 @@ interface ServiceContext {
     getHeader(): { [name: string]: string; };
     getURL(): { path: string; params: { [name: string]: string[]; }; };
     getBody(): Buffer;
-    getMethod(): "GET" | "POST" | "PUT" | "DELETE";
+    getMethod(): string;
     getForm(): { [name: string]: string[]; };
     getPathVariables(): { [name: string]: string; };
     getFile(name: string): { name: string; size: number; data: Buffer; };

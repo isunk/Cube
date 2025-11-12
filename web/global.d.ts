@@ -204,7 +204,8 @@ type FormData = {
     "Native Form Data"
 }
 declare function $native(name: "http"): (options?: HttpOptions) => {
-    request(method: string, url: string, header?: { [name: string]: string; }, body?: GenericByteArray | FormData): { status: number; header: { [name: string]: string; }; data: Buffer; };
+    request(method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "OPTIONS", url: string, header?: { [name: string]: string; }, body?: GenericByteArray | FormData): { status: number; header: { [name: string]: string; }; data: Buffer; };
+    request(method: Uppercase<string>, url: string, header?: { [name: string]: string; }, body?: GenericByteArray | FormData): { status: number; header: { [name: string]: string; }; data: Buffer; };
     toFormData(data: { [name: string]: string | { filename: string; data: GenericByteArray; }; }): FormData;
 }
 

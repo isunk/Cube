@@ -139,7 +139,7 @@ func (h *HttpClient) Request(method string, url string, header map[string]string
 		return nil, errors.New("not implemented")
 	}
 
-	req, err := http.NewRequest(strings.ToUpper(method), url, body)
+	req, err := http.NewRequest(method, url, body)
 	if err != nil {
 		return
 	}
