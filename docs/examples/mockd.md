@@ -94,6 +94,13 @@
                     body: !!~service.headers.indexOf("json") ? this.json52any(service.body || "{}") : service.body,
                 },
                 storage: JSON.parse(service.storage || "{}"),
+                invokeOtherPreResponseScript: (name) => {
+                    const preResponseScript = this.db.query(`SELECT PreResponseScript preResponseScript FROM MockService WHERE Active = 1 AND GroupId = ? AND URL = ? LIMIT 1`, service.groupId, name)?.pop()?.preResponseScript
+                    if (!preResponseScript) {
+                        throw new Error("pre-response script not found or not actived")
+                    }
+                    context.response.body = (new Function("$", preResponseScript))(context) ?? context.response.body
+                },
             }
             if (service.preRequestScript) {
                 context.response.body = (new Function("$", service.preRequestScript))(context) ?? context.response.body
@@ -805,9 +812,9 @@
                                     }
                                     return map.get(src)
                                 }
-                            require("/libs/monaco-editor/0.54.0/min/vs/loader.js")
+                            require("/libs/monaco-editor/0.52.2/min/vs/loader.js")
                                 .then(() => {
-                                    window.require.config({ paths: { vs: window.location.origin + "/libs/monaco-editor/0.54.0/min/vs" } })
+                                    window.require.config({ paths: { vs: window.location.origin + "/libs/monaco-editor/0.52.2/min/vs" } })
                                 })
                                 .then(() => {
                                     window.require(["vs/editor/editor.main"], () => {
@@ -883,7 +890,7 @@
                                             value: props.modelValue,
                                         })
                                         if (props.language === "typescript") {
-                                            monaco.languages.typescript.typescriptDefaults.addExtraLib(`declare var $ = { request?: { body?: any, }, response: { headers: any, body: any, }, storage: any, session?: any }`, "global.ts")
+                                            monaco.languages.typescript.typescriptDefaults.addExtraLib(`declare var $ = { request?: { body?: any, }, response: { headers: any, body: any, }, storage: any, invokeOtherPreResponseScript: name => void, }`, "global.ts")
                                         }
                                         editor.onDidChangeModelContent(() => {
                                             emit("update:modelValue", editor.getValue())
