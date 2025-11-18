@@ -89,6 +89,16 @@ func (w *Worker) Reset() {
 	w.loop.Reset()
 }
 
+func CreateProgram() *goja.Program {
+	// 编译源码
+	program, _ := goja.Compile(
+		"index",
+		"(function (id, ...params) { return require(id).default(...params); })", // 使用闭包，防止全局变量污染
+		false, // 关闭严格模式，增加运行时的容错能力
+	)
+	return program
+}
+
 func CreateWorker(program *goja.Program, id int) *Worker {
 	runtime := goja.New()
 

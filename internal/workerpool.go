@@ -2,7 +2,6 @@ package internal
 
 import (
 	"cube/internal/config"
-	"github.com/dop251/goja"
 )
 
 var WorkerPool struct {
@@ -15,11 +14,7 @@ func InitWorkerPool() {
 	WorkerPool.Channels = make(chan *Worker, config.Count)
 
 	// 编译源码
-	program, _ := goja.Compile(
-		"index",
-		"(function (id, ...params) { return require(id).default(...params); })", // 使用闭包，防止全局变量污染
-		false, // 关闭严格模式，增加运行时的容错能力
-	)
+	program := CreateProgram()
 
 	for i := 0; i < config.Count; i++ {
 		worker := CreateWorker(program, i) // 创建 goja 运行时
