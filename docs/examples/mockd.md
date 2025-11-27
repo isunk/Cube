@@ -58,64 +58,19 @@
         }
 
         public test(url: string, callback?: string, requestBody?: string) {
-            const service = this.db.query(`
-                SELECT
-                    s.StatusCode status,
-                    s.Headers headers,
-                    s.Body body,
-                    s.PreResponseScript preResponseScript,
-                    s.Settings settings,
-                    s.GroupId groupId,
-                    g.Storage storage,
-                    g.PreRequestScript preRequestScript
-                FROM
-                    MockService s
-                    LEFT JOIN MockGroup g ON s.GroupId = g.rowid
-                WHERE
-                    g.Active = 1
-                    AND s.Active = 1
-                    AND s.URL like ?
-                LIMIT 1
-            `, "%" + url.replace(/^https?:\/\/[^\/]+/, "").replace(/\?.*$/, "") + "%")?.pop()
-            if (!service) {
-                return callback ? new ServiceResponse(200, undefined, `mockc.callbacks["${callback}"](${JSON.stringify({ status: 404, })})`) : new ServiceResponse(404)
+            try {
+                const response = this.mock(url, requestBody && JSON.parse(decodeURIComponent(requestBody)))
+                if (callback) {
+                    return new ServiceResponse(200, undefined, `mockc.callbacks["${callback}"](${JSON.stringify(response)})`)
+                }
+                return new ServiceResponse(response.status, { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "*", "Access-Control-Allow-Headers": "*", ...response.headers }, JSON.stringify(response.body))
+            } catch (err) {
+                let status = 500
+                if (err.message === "service not found") {
+                    status = 404
+                }
+                return callback ? new ServiceResponse(200, undefined, `mockc.callbacks["${callback}"](${JSON.stringify({ status, error: err.message })})`) : new ServiceResponse(status, undefined, { error: err.message })
             }
-            const settings = service.settings ? JSON.parse(service.settings) : {}
-            if (settings.time) {
-                setTimeout(() => { }, settings.time)
-            }
-            const context = {
-                request: {
-                    body: requestBody && JSON.parse(decodeURIComponent(requestBody)),
-                },
-                response: {
-                    status: service.status || 200,
-                    headers: JSON.parse(service.headers || "{}"),
-                    body: !!~service.headers.indexOf("json") ? this.json52any(service.body || "{}") : service.body,
-                },
-                storage: JSON.parse(service.storage || "{}"),
-                invokeOtherPreResponseScript: (name) => {
-                    const preResponseScript = this.db.query(`SELECT PreResponseScript preResponseScript FROM MockService WHERE Active = 1 AND GroupId = ? AND URL = ? LIMIT 1`, service.groupId, name)?.pop()?.preResponseScript
-                    if (!preResponseScript) {
-                        throw new Error("pre-response script not found or not actived")
-                    }
-                    context.response.body = (new Function("$", preResponseScript))(context) ?? context.response.body
-                },
-            }
-            if (service.preRequestScript) {
-                context.response.body = (new Function("$", service.preRequestScript))(context) ?? context.response.body
-            }
-            if (service.preResponseScript) {
-                context.response.body = (new Function("$", service.preResponseScript))(context) ?? context.response.body
-            }
-            const newStorage = JSON.stringify(context.storage)
-            if (newStorage !== service.storage) {
-                this.db.exec(`UPDATE MockGroup SET Storage = ? WHERE rowid = ?`, newStorage, service.groupId)
-            }
-            if (callback) {
-                return new ServiceResponse(200, undefined, `mockc.callbacks["${callback}"](${JSON.stringify(context.response)})`)
-            }
-            return new ServiceResponse(context.response.status, { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "*", "Access-Control-Allow-Headers": "*", ...context.response.headers }, JSON.stringify(context.response.body))
         }
 
         public post(input: Group | Service | Service[]) {
@@ -203,6 +158,58 @@
                     preRequestScript: i.PreRequestScript,
                 }
             })
+        }
+
+        private mock(url: string, requestBody: any): { status: number; headers: any; body: any; } {
+            const service = this.db.query(`
+                SELECT
+                    s.StatusCode status,
+                    s.Headers headers,
+                    s.Body body,
+                    s.PreResponseScript preResponseScript,
+                    s.Settings settings,
+                    s.GroupId groupId,
+                    g.Storage storage,
+                    g.PreRequestScript preRequestScript
+                FROM
+                    MockService s
+                    LEFT JOIN MockGroup g ON s.GroupId = g.rowid
+                WHERE
+                    g.Active = 1
+                    AND s.Active = 1
+                    AND s.URL like ?
+                LIMIT 1
+            `, "%" + url.replace(/^https?:\/\/[^\/]+/, "").replace(/\?.*$/, ""))?.pop()
+            if (!service) {
+                throw new Error("service not found")
+            }
+            const settings = service.settings ? JSON.parse(service.settings) : {}
+            if (settings.time) {
+                setTimeout(() => { }, settings.time)
+            }
+            const context = {
+                request: {
+                    body: requestBody,
+                },
+                response: {
+                    status: service.status || 200,
+                    headers: JSON.parse(service.headers || "{}"),
+                    body: !!~service.headers.indexOf("json") ? this.json52any(service.body || "{}") : service.body,
+                },
+                storage: JSON.parse(service.storage || "{}"),
+                mock: (url, requestBody?: string) => this.mock(url, requestBody),
+            }
+            if (service.preRequestScript) {
+                context.response.body = (new Function("$", service.preRequestScript))(context) ?? context.response.body
+            }
+            if (service.preResponseScript) {
+                context.response.body = (new Function("$", service.preResponseScript))(context) ?? context.response.body
+            }
+            const newStorage = JSON.stringify(context.storage)
+            if (newStorage !== service.storage) {
+                this.db.exec(`UPDATE MockGroup SET Storage = ? WHERE rowid = ?`, newStorage, service.groupId)
+            }
+            return context.response
         }
 
         private json52any(text: string) {
@@ -812,9 +819,9 @@
                                     }
                                     return map.get(src)
                                 }
-                            require("/libs/monaco-editor/0.54.0/min/vs/loader.js")
+                            require("/libs/monaco-editor/0.52.2/min/vs/loader.js")
                                 .then(() => {
-                                    window.require.config({ paths: { vs: window.location.origin + "/libs/monaco-editor/0.54.0/min/vs" } })
+                                    window.require.config({ paths: { vs: window.location.origin + "/libs/monaco-editor/0.52.2/min/vs" } })
                                 })
                                 .then(() => {
                                     window.require(["vs/editor/editor.main"], () => {
@@ -890,7 +897,7 @@
                                             value: props.modelValue,
                                         })
                                         if (props.language === "typescript") {
-                                            monaco.languages.typescript.typescriptDefaults.addExtraLib(`declare var $ = { request?: { body?: any, }, response: { headers: any, body: any, }, storage: any, invokeOtherPreResponseScript: name => void, }`, "global.ts")
+                                            monaco.languages.typescript.typescriptDefaults.addExtraLib(`declare type MockResponse = { status: number; headers: any; body: any; }; declare const $: { request?: { body?: any; }; response: MockResponse; storage: any; mock: (url: string, requestBody: any) => MockResponse; };`, "global.ts")
                                         }
                                         editor.onDidChangeModelContent(() => {
                                             emit("update:modelValue", editor.getValue())
