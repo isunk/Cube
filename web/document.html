@@ -125,7 +125,22 @@
                 })
 
                 // 渲染 mermaid 图
-                mermaid.init()
+                mermaid.initialize({
+                    theme: "base",
+                    themeVariables: {
+                        primaryColor: "#FFFFFF", // 节点背景色
+                        primaryTextColor: "#333333", // 节点文字颜色
+                        primaryBorderColor: "#CCCCCC", // 节点边框色
+                        lineColor: "#888888", // 连接线颜色
+                        tertiaryColor: "#D0E4FF", // 特定节点/分组背景色
+                        tertiaryBorderColor: "#D0E4FF", // 特定节点/分组边框色
+                        tertiaryTextColor: "#00A4FF", // 特定节点/分组文字颜色
+                    },
+                    onRenderComplete: function(svg, bindFunctions) {
+                        debugger
+                    },
+                })
+                mermaid.init().then(() => this.setSvgScalable())
             },
 
             // 创建行号元素
@@ -189,6 +204,58 @@
                 return e
             },
 
+            setSvgScalable() {
+                document.querySelectorAll(".mermaid").forEach(container => {
+                    let scale = 1.0, // 缩放比例
+                        translateX = 0, translateY = 0, // X、Y 轴平移量
+                        dragging = false,
+                        startX = 0, startY = 0, // 鼠标按下时的 X、Y 坐标
+                        svg = container.querySelector("svg"),
+                        update = () => svg.style.transform = `translate(${translateX}px, ${translateY}px) scale(${scale})` // 更新 SVG 的 transform 样式
+                    svg.style.backgroundColor = "rgb(255, 255, 255, .95)"
+                    // 鼠标滚轮缩放
+                    container.addEventListener("wheel", event => {
+                        event.preventDefault()
+                        if (event.deltaY < 0) {
+                            scale += 0.1 // 向上滚，放大
+                        } else {
+                            scale = Math.max(1, scale - 0.1) // 向下滚，缩小，最小缩放为 1
+                        }
+                        scale = Math.min(10, scale) // 限制最大缩放倍数为 10
+                        update()
+                    }, {
+                        passive: false,
+                    })
+                    // 鼠标开始拖动
+                    container.onmousedown = event => {
+                        event.preventDefault()
+                        dragging = true
+                        startX = event.clientX
+                        startY = event.clientY
+                    }
+                    // 鼠标拖动中
+                    container.onmousemove = event => {
+                        event.preventDefault()
+                        if (!dragging) {
+                            return
+                        }
+                        translateX += event.clientX - startX
+                        translateY += event.clientY - startY
+                        startX = event.clientX
+                        startY = event.clientY
+                        update()
+                    }
+                    // 鼠标停止拖动、鼠标离开容器时也停止拖动
+                    container.onmouseup = container.onmouseleave = event => {
+                        event.preventDefault()
+                        if (dragging) {
+                            dragging = false
+                        }
+                    }
+                    update()
+                })
+            },
+
             alert(message, level = "warning") {
                 swal(message, "", level)
                 if (level === "error") {
@@ -216,3 +283,4 @@
 
 
 </html>
+
