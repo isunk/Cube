@@ -210,15 +210,19 @@
                         svg = container.querySelector("svg"),
                         update = () => svg.style.transform = `translate(${translateX}px, ${translateY}px) scale(${scale})` // 更新 SVG 的 transform 样式
                     svg.style.backgroundColor = "rgb(255, 255, 255, .95)"
+                    svg.style.position = "relative"
+                    svg.style.zIndex = 99
                     // 鼠标滚轮缩放
                     container.addEventListener("wheel", event => {
                         event.preventDefault()
                         if (event.deltaY < 0) {
-                            scale += 0.1 // 向上滚，放大
+                            scale = Math.min(10, scale + 0.1) // 向上滚，放大，最大倍数为 10
                         } else {
-                            scale = Math.max(1, scale - 0.1) // 向下滚，缩小，最小缩放为 1
+                            scale = Math.max(1, scale - 0.1) // 向下滚，缩小，最小倍数为 1
+                            if (scale === 1) {
+                                translateX = translateY = startX = startY = 0
+                            }
                         }
-                        scale = Math.min(10, scale) // 限制最大缩放倍数为 10
                         update()
                     }, {
                         passive: false,
@@ -280,5 +284,6 @@
 
 
 </html>
+
 
 
