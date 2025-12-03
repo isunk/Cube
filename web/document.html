@@ -66,6 +66,7 @@
     <script src="/libs/sweetalert/2.1.2/sweetalert.min.js" defer></script>
     <script src="/libs/marked/9.0.0/marked.min.js"></script>
     <script src="/libs/highlight.js/11.8.0/highlight.min.js"></script>
+    <script src="/libs/mermaid/11.12.0/mermaid.min.js"></script>
     <script>
         ({
             setup() {
@@ -77,6 +78,12 @@
                                 href = "/document.html?" + href // 兼容 markdown 文件的相对路径跳转
                             }
                             return this.__proto__.link(href, title, text)
+                        },
+                        code(code, type, escaped) {
+                            if (type === "mermaid") {
+                                return "<div class=\"mermaid\">" + code + "</div>"
+                            }
+                            return this.__proto__.code(code, type, escaped)
                         },
                     },
                 })
@@ -116,6 +123,9 @@
                         e.after(that.createBtnAdd(content, new URL("http://0.0.0.0/?" + metadata.substring(3)).searchParams))
                     }
                 })
+
+                // 渲染 mermaid 图
+                mermaid.init()
             },
 
             // 创建行号元素
@@ -203,5 +213,6 @@
         }).mount()
     </script>
 </body>
+
 
 </html>
