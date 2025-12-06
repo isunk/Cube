@@ -10,7 +10,7 @@ type SQLBuilder = {
     params: any[]
 }
 
-class Column<V> {
+class ColumnRef<V> {
     private builder: SQLBuilder
 
     private name: string
@@ -75,8 +75,8 @@ class Column<V> {
     }
 }
 
-type Table<T> = {
-    [alias in keyof T]: Column<T[alias]>
+type TableRef<T> = {
+    [alias in keyof T]: ColumnRef<T[alias]>
 }
 
 type WherePredicate = {
@@ -87,41 +87,41 @@ export class Dataset<T> {
 
     private static readonly _ = new Object()
 
-    private constructor(c: new () => T) {
+    private constructor(clazz: new () => T) {
         this.builder = {
-            table: <string>c["name"],
+            table: clazz.name,
             wheres: "1 = 1",
             params: [],
         }
     }
 
-    public static from<T>(c: new () => T): Dataset<T> {
-        return new Dataset<T>(c)
+    public static from<T>(clazz: new () => T): Dataset<T> {
+        return new Dataset<T>(clazz)
     }
 
-    public where(e: (t: Table<T>) => WherePredicate): Omit<Dataset<T>, "insert"> {
+    public where(func: (t: TableRef<T>) => WherePredicate): Omit<Dataset<T>, "insert"> {
         const builder = this.builder
 
-        e.apply(this, [new Proxy(Dataset._, {
+        func.apply(this, [new Proxy(Dataset._, {
             get(_, property) {
-                return new Column(property, builder)
+                return new ColumnRef(property as string, builder)
             },
         })])
 
         return this
     }
 
-    public select<E>(e: (t: T) => E): E[] {
+    public select<E>(func: (t: T) => E): E[] {
         const columns = []
 
-        e.apply(this, [new Proxy(Dataset._, {
+        func.apply(this, [new Proxy(Dataset._, {
             get(_, property) {
                 columns.push(property)
                 return null
             },
         })])
 
-        return this.invoke("select", `select ${columns.join(", ")} from ${this.builder.table} where ${this.builder.wheres}`, this.builder.params).map(i => e.apply(this, [i]))
+        return this.invoke("select", `select ${columns.join(", ")} from ${this.builder.table} where ${this.builder.wheres}`, this.builder.params).map(i => func.apply(this, [i]))
     }
 
     public count(): number {
