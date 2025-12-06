@@ -76,7 +76,7 @@ class ColumnRef<V> {
 }
 
 type TableRef<T> = {
-    [alias in keyof T]: ColumnRef<T[alias]>
+    [name in keyof T]: ColumnRef<T[name]>
 }
 
 type WherePredicate = {
@@ -111,12 +111,14 @@ export class Dataset<T> {
         return this
     }
 
-    public select<E>(func: (t: T) => E): E[] {
+    public select<E>(func: (e: T) => E): E[] {
         const columns = []
 
         func.apply(this, [new Proxy(Dataset._, {
             get(_, property) {
-                columns.push(property)
+                if (!columns.includes(property)) {
+                    columns.push(property)
+                }
                 return null
             },
         })])
@@ -128,21 +130,21 @@ export class Dataset<T> {
         return Number(this.invoke("count", `select count(1) count from ${this.builder.table} where ${this.builder.wheres}`, this.builder.params).pop()["count"])
     }
 
-    public update(t: Partial<T>): void {
-        const columns = Object.keys(t)
-        this.invoke("update", `update ${this.builder.table} set ${columns.map(c => c + " = ?").join(", ")} where ${this.builder.wheres}`, [...columns.map(c => t[c]), ...this.builder.params])
+    public update(e: Partial<T>): void {
+        const columns = Object.keys(e)
+        this.invoke("update", `update ${this.builder.table} set ${columns.map(c => c + " = ?").join(", ")} where ${this.builder.wheres}`, [...columns.map(c => e[c]), ...this.builder.params])
     }
 
     public delete(): void {
         this.invoke("delete", `delete from ${this.builder.table} where ${this.builder.wheres}`, this.builder.params)
     }
 
-    public insert(t: T) {
-        const columns = Object.keys(t)
-        return this.invoke("insert", `insert into ${this.builder.table}(${columns.join(", ")}) values(${columns.map(_ => "?").join(", ")})`, columns.map(c => t[c]))
+    public insert(e: T) {
+        const columns = Object.keys(e)
+        return this.invoke("insert", `insert into ${this.builder.table}(${columns.join(", ")}) values(${columns.map(_ => "?").join(", ")})`, columns.map(c => e[c]))
     }
 
-    private invoke(op: string, stmt: string, params: object[]): object[] {
+    protected invoke(op: string, stmt: string, params: object[]): object[] {
         if (op == "select" || op == "count") {
             return db.query(stmt, ...params)
         }
