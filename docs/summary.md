@@ -4,7 +4,7 @@
 
 - [A custom module extends Number](modules/number.md)
 
-- [SQL](modules/sql.md)、[Linq2SQL](modules/linq2sql.md)、[GraphQL](modules/graphql.md)
+- [SQL](modules/sql.md)、[Linq2SQL](modules/linq2sql.md)、[GraphQL](modules/graphql.md)、[DbHelper](modules/dbhelper.md)
 
 - [BPM](modules/bpm.md)
 

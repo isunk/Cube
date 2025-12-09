@@ -3,11 +3,10 @@
 1. Create a controller with url `/service/mockd` and method `Any`.
     ```typescript
     //?name=mockd&type=controller&url=mockd{name}&method=&tag=mock
-    import * as JSON5 from "https://unpkg.com/json5@2/dist/index.min.js"
+    import * as JSON5 from "https://cdn.bootcdn.net/ajax/libs/json5/2.2.3/index.min.js"
+    import { helper, ColumnType } from "./DbHelper"
 
     export default (app => app.run.bind(app))(new class {
-        private db = $native("db")
-
         public run(ctx: ServiceContext) {
             const forms = Object.entries(ctx.getForm()).reduce((p, c) => { p[c[0]] = c[1]?.[0]; return p; }, {}) as { u: string; c: string; b: string; g: string; s: string; },
                 name = ctx.getPathVariables().name
@@ -35,26 +34,24 @@
         }
 
         public setup() {
-            this.db.exec(`
-                DROP TABLE IF EXISTS MockGroup;
-                CREATE TABLE IF NOT EXISTS MockGroup (
-                    Name VARCHAR(64) PRIMARY KEY NOT NULL,
-                    Active BOOLEAN NOT NULL DEFAULT false,
-                    Storage TEXT NOT NULL DEFAULT '',
-                    PreRequestScript TEXT NOT NULL DEFAULT ''
-                );
-                DROP TABLE IF EXISTS MockService;
-                CREATE TABLE IF NOT EXISTS MockService (
-                    GroupId INTEGER NOT NULL,
-                    Active BOOLEAN NOT NULL DEFAULT false,
-                    URL VARCHAR(255) NOT NULL,
-                    StatusCode INTEGER NOT NULL DEFAULT 200,
-                    Headers TEXT NOT NULL DEFAULT '',
-                    Body TEXT NOT NULL DEFAULT '',
-                    PreResponseScript TEXT NOT NULL DEFAULT '',
-                    Settings TEXT NOT NULL DEFAULT ''
-                );
-            `);
+            helper.dropTable("MockGroup")
+            helper.createTable("MockGroup", [
+                { name: "Name", type: ColumnType.String, },
+                { name: "Active", type: ColumnType.Boolean, },
+                { name: "Storage", type: ColumnType.Text, },
+                { name: "PreRequestScript", type: ColumnType.Text, },
+            ])
+            helper.dropTable("MockService")
+            helper.createTable("MockService", [
+                { name: "GroupId", type: ColumnType.Integer, },
+                { name: "Active", type: ColumnType.Boolean, },
+                { name: "URL", type: ColumnType.String, },
+                { name: "StatusCode", type: ColumnType.Integer, },
+                { name: "Headers", type: ColumnType.Text, },
+                { name: "Body", type: ColumnType.Text, },
+                { name: "PreResponseScript", type: ColumnType.Text, },
+                { name: "Settings", type: ColumnType.Text, },
+            ]);
         }
 
         public test(url: string, callback?: string, requestBody?: string) {
@@ -78,68 +75,120 @@
                 if (("group" in input)) {
                     input = [input]
                 } else {
-                    this.db.transaction(tx => {
-                        input = input as Group
-                        this.db.exec(`INSERT INTO MockGroup (Name, Active, Storage, PreRequestScript) VALUES (?, ?, ?, ?)`, input.name, input.active, input.storage, input.preRequestScript)
-                        if (input.active) {
-                            const id = tx.query("SELECT last_insert_rowid() id")[0].id
-                            tx.exec(`UPDATE MockGroup SET Active = 0 WHERE rowid <> ?`, id)
-                        }
+                    const id = helper.insert("MockGroup", {
+                        Name: input.name,
+                        Active: input.active,
+                        Storage: input.storage,
+                        PreRequestScript: input.preRequestScript,
                     })
-                    return
+                    if (input.active) {
+                        helper.update("MockGroup", {
+                            conditions: [{
+                                field: "ID",
+                                operator: "<>",
+                                value: id,
+                            }],
+                            conjunction: "AND",
+                        }, { Active: false })
+                    }
+                    return id
                 }
             }
-            return this.db.exec(`INSERT INTO MockService (GroupId, Active, URL, StatusCode, Headers, Body, PreResponseScript, Settings) VALUES ${input.map(() => "(?, ?, ?, ?, ?, ?, ?, ?)").join(",")}`, ...input.map(s => [
-                s.group,
-                s.active,
-                s.url,
-                s.status,
-                s.headers,
-                s.body,
-                s.preResponseScript,
-                s.settings,
-            ]).flat())
+            input.forEach(s => {
+                helper.insert("MockService", {
+                    GroupId: s.group,
+                    Active: s.active,
+                    URL: s.url,
+                    StatusCode: s.status,
+                    Headers: s.headers,
+                    Body: s.body,
+                    PreResponseScript: s.preResponseScript,
+                    Settings: s.settings,
+                })
+            })
         }
 
         public delete(group: string, services: string) {
             if (services !== undefined) {
-                return this.db.exec(`DELETE FROM MockService WHERE rowid in (${services.split(",").map(() => "?").join(",")})`, ...(services.split(",")))
+                return helper.delete("MockService", {
+                    conditions: [{
+                        field: "ID",
+                        operator: "in",
+                        value: services.split(","),
+                    }],
+                    conjunction: "AND",
+                })
             }
             if (group !== undefined) {
-                let effect = 0
-                this.db.transaction(tx => {
-                    tx.exec(`DELETE FROM MockService WHERE GroupId = ?`, group)
-                    effect = tx.exec(`DELETE FROM MockGroup WHERE rowid = ?`, group)
+                helper.delete("MockService", {
+                    conditions: [{
+                        field: "GroupId",
+                        operator: "=",
+                        value: group,
+                    }],
+                    conjunction: "AND",
                 })
-                return effect
+                return helper.delete("MockGroup", {
+                    conditions: [{
+                        field: "ID",
+                        operator: "=",
+                        value: group,
+                    }],
+                    conjunction: "AND",
+                })
             }
             return 0
         }
 
         public put(input: Group | Service) {
             if ("group" in input) {
-                return this.db.exec("UPDATE MockService SET GroupId = ?, Active = ?, URL = ?, StatusCode = ?, Headers = ?, Body = ?, PreResponseScript = ?, Settings = ? WHERE rowid = ?",
-                    input.group,
-                    input.active,
-                    input.url,
-                    input.status,
-                    input.headers,
-                    input.body,
-                    input.preResponseScript,
-                    input.settings,
-                    input.id,
-                )
+                return helper.update("MockService", {
+                    conditions: [{
+                        field: "ID",
+                        operator: "=",
+                        value: input.id,
+                    }],
+                    conjunction: "AND",
+                }, {
+                    GroupId: input.group,
+                    Active: input.active,
+                    URL: input.url,
+                    StatusCode: input.status,
+                    Headers: input.headers,
+                    Body: input.body,
+                    PreResponseScript: input.preResponseScript,
+                    Settings: input.settings,
+                })
             }
-            return this.db.exec(`UPDATE MockGroup SET Name = ?, Active = ?, Storage = ?, PreRequestScript = ? WHERE rowid = ?`, input.name, input.active, input.storage, input.preRequestScript, input.id)
+            return helper.update("MockGroup", {
+                conditions: [{
+                    field: "ID",
+                    operator: "=",
+                    value: input.id,
+                }],
+                conjunction: "AND",
+            }, {
+                Name: input.name,
+                Active: input.active,
+                Storage: input.storage,
+                PreRequestScript: input.preRequestScript,
+            })
         }
 
         public get(group?: string): Group[] | Service[] {
             if (group) {
-                return this.db.query(`SELECT rowid, GroupId, Active, URL, StatusCode, Headers, Body, PreResponseScript, Settings FROM MockService WHERE GroupId = ? ORDER BY URL`, group).map(i => {
+                return helper.select("MockService", {
+                    conditions: [{
+                        field: "GroupId",
+                        operator: "=",
+                        value: group,
+                    }],
+                    conjunction: "AND",
+                }).map(i => {
                     return {
-                        id: i.rowid,
+                        id: i.ID,
                         group: i.GroupId,
-                        active: i.Active,
+                        active: !!i.Active,
                         url: i.URL,
                         status: i.StatusCode,
                         headers: i.Headers,
@@ -147,13 +196,13 @@
                         preResponseScript: i.PreResponseScript,
                         settings: i.Settings,
                     }
-                })
+                }).sort((a, b) => a.url.localeCompare(b.url))
             }
-            return this.db.query(`SELECT rowid, Name, Active, Storage, PreRequestScript FROM MockGroup`).map(i => {
+            return helper.select("MockGroup").map(i => {
                 return {
-                    id: i.rowid,
+                    id: i.ID,
                     name: i.Name,
-                    active: i.Active,
+                    active: !!i.Active,
                     storage: i.Storage,
                     preRequestScript: i.PreRequestScript,
                 }
@@ -161,7 +210,7 @@
         }
 
         private mock(url: string, requestBody: any): { status: number; headers: any; body: any; } {
-            const service = this.db.query(`
+            const service = helper.query(`
                 SELECT
                     s.StatusCode status,
                     s.Headers headers,
@@ -173,7 +222,7 @@
                     g.PreRequestScript preRequestScript
                 FROM
                     MockService s
-                    LEFT JOIN MockGroup g ON s.GroupId = g.rowid
+                    LEFT JOIN MockGroup g ON s.GroupId = g.ID
                 WHERE
                     g.Active = 1
                     AND s.Active = 1
@@ -207,7 +256,14 @@
             }
             const newStorage = JSON.stringify(context.storage)
             if (newStorage !== service.storage) {
-                this.db.exec(`UPDATE MockGroup SET Storage = ? WHERE rowid = ?`, newStorage, service.groupId)
+                helper.update("MockGroup", {
+                    conditions: [{
+                        field: "ID",
+                        operator: "=",
+                        value: service.groupId,
+                    }],
+                    conjunction: "AND",
+                }, { Storage: newStorage })
             }
             return context.response
         }
@@ -569,11 +625,13 @@
                                 if (r.status !== 200) {
                                     throw new Error(r.statusText)
                                 }
+                                return r.json()
+                            }).then(r => {
                                 return fetch("/service/mockd", {
                                     method: "POST",
                                     body: JSON.stringify(entries.filter(i => i._resourceType === "xhr").map(i => {
                                         return {
-                                            group: $group.id,
+                                            group: r.data,
                                             active: true,
                                             url: i.request.url.replace(/^https?:\/\/[^\/]+/, "").replace(/\?.*$/, ""),
                                             status: i.response.status,
@@ -819,9 +877,9 @@
                                     }
                                     return map.get(src)
                                 }
-                            require("/libs/monaco-editor/0.52.2/min/vs/loader.js")
+                            require("/libs/monaco-editor/0.54.0/min/vs/loader.js")
                                 .then(() => {
-                                    window.require.config({ paths: { vs: window.location.origin + "/libs/monaco-editor/0.52.2/min/vs" } })
+                                    window.require.config({ paths: { vs: window.location.origin + "/libs/monaco-editor/0.54.0/min/vs" } })
                                 })
                                 .then(() => {
                                     window.require(["vs/editor/editor.main"], () => {
@@ -921,11 +979,13 @@
     </html>
     ```
 
-3. Setup database tables with visit [`/service/mockd?setup`](/service/mockd?setup)
+3. Import [DbHelper](modules/dbhelper.md).
 
-4. Visit `/resource/mockd` and create a group with uploading a HAR file.
+4. Setup database tables with visit [`/service/mockd?setup`](/service/mockd?setup)
 
-5. Inject mock client.
+5. Visit `/resource/mockd` and create a group with uploading a HAR file.
+
+6. Inject mock client.
     - Using JSONP request with src `/service/mockd?test&u=...&c=...&b=...`
         ```javascript
         window.mockc = (endpoint, url, options) => {
@@ -977,7 +1037,7 @@
         })
         ```
 
-6. You can also reverse the server to android devices like that
+7. You can also reverse the server to android devices like that
     ```bash
     adb reverse tcp:8090 tcp:8090
     ```
