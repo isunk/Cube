@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strconv"
+	"time"
 
 	"github.com/dop251/goja"
 	_ "github.com/go-sql-driver/mysql"
@@ -51,6 +53,7 @@ func ExportDatabaseRows(rows *sql.Rows) ([]interface{}, error) {
 	defer rows.Close()
 
 	columns, _ := rows.Columns()
+	columnTypes, _ := rows.ColumnTypes()
 	buf := make([]interface{}, len(columns))
 	for index := range columns {
 		var a interface{}
@@ -64,7 +67,28 @@ func ExportDatabaseRows(rows *sql.Rows) ([]interface{}, error) {
 
 		record := make(map[string]interface{})
 		for index, data := range buf {
-			record[columns[index]] = *data.(*interface{})
+			if bytes, ok := data.([]byte); ok {
+				value := string(bytes)
+				switch columnTypes[index].DatabaseTypeName() {
+				case "SMALLINT", "MEDIUMINT", "INT", "INTEGER", "BIGINT", "YEAR":
+					data, _ = strconv.Atoi(value)
+				case "TINYINT", "BOOL", "BOOLEAN", "BIT":
+					data, _ = strconv.ParseBool(value)
+				case "FLOAT", "DOUBLE", "DECIMAL":
+					data, _ = strconv.ParseFloat(value, 64)
+				case "DATETIME", "TIMESTAMP":
+					data, _ = time.Parse("2006-01-02 15:04:05", value)
+				case "DATE":
+					data, _ = time.Parse("2006-01-02", value)
+				case "TIME":
+					data, _ = time.Parse("15:04:05", value)
+				case "NULL":
+					data = nil
+				default:
+					data = value
+				}
+			}
+			record[columns[index]] = data
 		}
 		records = append(records, record)
 	}
