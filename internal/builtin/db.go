@@ -54,20 +54,19 @@ func ExportDatabaseRows(rows *sql.Rows) ([]interface{}, error) {
 
 	columns, _ := rows.Columns()
 	columnTypes, _ := rows.ColumnTypes()
-	buf := make([]interface{}, len(columns))
-	for index := range columns {
-		var a interface{}
-		buf[index] = &a
+	dataset, row := make([]interface{}, len(columns)), make([]interface{}, len(columns))
+	for index := range dataset {
+		row[index] = &dataset[index] // 将每个值的指针放入接口切片中
 	}
 
 	var records []interface{}
 
 	for rows.Next() {
-		_ = rows.Scan(buf...)
+		rows.Scan(row...)
 
 		record := make(map[string]interface{})
-		for index, data := range buf {
-			if bytes, ok := data.([]byte); ok {
+		for index, data := range dataset {
+			if bytes, ok := data.([]byte); ok { // 对于使用 MySQL 驱动程序，返回值始终为 []byte，这里根据列类型进行转换（参考 https://github.com/go-sql-driver/mysql/issues/1401）
 				value := string(bytes)
 				switch columnTypes[index].DatabaseTypeName() {
 				case "SMALLINT", "MEDIUMINT", "INT", "INTEGER", "BIGINT", "YEAR":
