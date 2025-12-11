@@ -6,28 +6,57 @@
     import * as JSON5 from "https://cdn.bootcdn.net/ajax/libs/json5/2.2.3/index.min.js"
     import { helper, ColumnType } from "./DbHelper"
 
+    interface Group {
+        ID?: number
+        Name: string
+        Active: boolean
+        Storage: string
+        PreRequestScript: string
+    }
+
+    interface Service {
+        ID?: number
+        GroupId: number
+        Active: boolean
+        URL: string
+        StatusCode: number
+        Headers: string
+        Body: string
+        PreResponseScript: string
+        Settings: string
+    }
+
     export default (app => app.run.bind(app))(new class {
+        private CORD_HEADERS = {
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "*",
+            "Access-Control-Allow-Headers": "*",
+        }
+
         public run(ctx: ServiceContext) {
-            const forms = Object.entries(ctx.getForm()).reduce((p, c) => { p[c[0]] = c[1]?.[0]; return p; }, {}) as { u: string; c: string; b: string; g: string; s: string; },
+            const params = Object.entries(ctx.getForm()).reduce((p, c) => { p[c[0]] = c[1]?.[0]; return p; }, {}) as { [i in ("u" | "c" | "b") | ("group" | "service")]: string; },
                 name = ctx.getPathVariables().name
-            if ("setup" in forms) {
+
+            if ("setup" in params) {
                 return this.setup()
             }
-            if ("test" in forms || name) {
+
+            if ("test" in params || name) {
                 if (ctx.getMethod() === "OPTIONS") {
-                    return new ServiceResponse(200, { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "*", "Access-Control-Allow-Headers": "*" })
+                    return new ServiceResponse(200, this.CORD_HEADERS)
                 }
-                return this.test(name || forms.u, forms.c, forms.b ?? ctx.getBody()?.toString())
+                return this.test(name || params.u, params.c, params.b ?? ctx.getBody()?.toString())
             }
+
             switch (ctx.getMethod()) {
                 case "POST":
-                    return this.post(ctx.getBody().toJson())
+                    return this.post(params.group, ctx.getBody().toJson())
                 case "DELETE":
-                    return this.delete(forms.g, forms.s)
+                    return this.delete(params.group, params.service)
                 case "PUT":
-                    return this.put(ctx.getBody().toJson())
+                    return this.put(params.group, params.service, ctx.getBody().toJson())
                 case "GET":
-                    return this.get(forms.g)
+                    return this.get(params.group)
                 default:
                     return new ServiceResponse(405)
             }
@@ -60,7 +89,7 @@
                 if (callback) {
                     return new ServiceResponse(200, undefined, `mockc.callbacks["${callback}"](${JSON.stringify(response)})`)
                 }
-                return new ServiceResponse(response.status, { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "*", "Access-Control-Allow-Headers": "*", ...response.headers }, JSON.stringify(response.body))
+                return new ServiceResponse(response.status, { ...this.CORD_HEADERS, ...response.headers }, JSON.stringify(response.body))
             } catch (err) {
                 let status = 500
                 if (err.message === "service not found") {
@@ -70,46 +99,22 @@
             }
         }
 
-        public post(input: Group | Service | Service[]) {
-            if (!Array.isArray(input)) {
-                if (("group" in input)) {
-                    input = [input]
-                } else {
-                    const id = helper.insert("MockGroup", {
-                        Name: input.name,
-                        Active: input.active,
-                        Storage: input.storage,
-                        PreRequestScript: input.preRequestScript,
-                    })
-                    if (input.active) {
-                        helper.update("MockGroup", {
-                            conditions: [{
-                                field: "ID",
-                                operator: "<>",
-                                value: id,
-                            }],
-                            conjunction: "AND",
-                        }, { Active: false })
-                    }
-                    return id
+        public post(group: string | undefined, input: Group | Service | Service[]) {
+            if (!group) {
+                input = input as Group
+                if (input.Active) {
+                    helper.update("MockGroup", undefined, { Active: false })
                 }
+                return input.ID = helper.insert("MockGroup", input)
             }
-            input.forEach(s => {
-                helper.insert("MockService", {
-                    GroupId: s.group,
-                    Active: s.active,
-                    URL: s.url,
-                    StatusCode: s.status,
-                    Headers: s.headers,
-                    Body: s.body,
-                    PreResponseScript: s.preResponseScript,
-                    Settings: s.settings,
-                })
-            })
+            return (Array.isArray(input) ? input as Service[] : [input as Service]).map(i => helper.insert("MockService", {
+                ...i,
+                GroupId: group,
+            }))
         }
 
-        public delete(group: string, services: string) {
-            if (services !== undefined) {
+        public delete(group: string | undefined, services: string | undefined) {
+            if (services) {
                 return helper.delete("MockService", {
                     conditions: [{
                         field: "ID",
@@ -119,7 +124,7 @@
                     conjunction: "AND",
                 })
             }
-            if (group !== undefined) {
+            if (group) {
                 helper.delete("MockService", {
                     conditions: [{
                         field: "GroupId",
@@ -140,42 +145,32 @@
             return 0
         }
 
-        public put(input: Group | Service) {
-            if ("group" in input) {
+        public put(group: string | undefined, service: string | undefined, input: Group | Service) {
+            if (service) {
+                input = input as Service
                 return helper.update("MockService", {
                     conditions: [{
                         field: "ID",
                         operator: "=",
-                        value: input.id,
+                        value: service,
                     }],
                     conjunction: "AND",
-                }, {
-                    GroupId: input.group,
-                    Active: input.active,
-                    URL: input.url,
-                    StatusCode: input.status,
-                    Headers: input.headers,
-                    Body: input.body,
-                    PreResponseScript: input.preResponseScript,
-                    Settings: input.settings,
-                })
+                }, input)
             }
-            return helper.update("MockGroup", {
-                conditions: [{
-                    field: "ID",
-                    operator: "=",
-                    value: input.id,
-                }],
-                conjunction: "AND",
-            }, {
-                Name: input.name,
-                Active: input.active,
-                Storage: input.storage,
-                PreRequestScript: input.preRequestScript,
-            })
+            if (group) {
+                return helper.update("MockGroup", {
+                    conditions: [{
+                        field: "ID",
+                        operator: "=",
+                        value: group,
+                    }],
+                    conjunction: "AND",
+                }, input)
+            }
+            return 0
         }
 
-        public get(group?: string): Group[] | Service[] {
+        public get(group: string | undefined): Group[] | Service[] {
             if (group) {
                 return helper.select("MockService", {
                     conditions: [{
@@ -184,42 +179,22 @@
                         value: group,
                     }],
                     conjunction: "AND",
-                }).map(i => {
-                    return {
-                        id: i.ID,
-                        group: i.GroupId,
-                        active: !!i.Active,
-                        url: i.URL,
-                        status: i.StatusCode,
-                        headers: i.Headers,
-                        body: i.Body,
-                        preResponseScript: i.PreResponseScript,
-                        settings: i.Settings,
-                    }
-                }).sort((a, b) => a.url.localeCompare(b.url))
+                }).sort((a, b) => a.URL.localeCompare(b.URL)).map(i => i)
             }
-            return helper.select("MockGroup").map(i => {
-                return {
-                    id: i.ID,
-                    name: i.Name,
-                    active: !!i.Active,
-                    storage: i.Storage,
-                    preRequestScript: i.PreRequestScript,
-                }
-            })
+            return helper.select("MockGroup").map(i => i)
         }
 
         private mock(url: string, requestBody: any): { status: number; headers: any; body: any; } {
             const service = helper.query(`
                 SELECT
-                    s.StatusCode status,
-                    s.Headers headers,
-                    s.Body body,
-                    s.PreResponseScript preResponseScript,
-                    s.Settings settings,
-                    s.GroupId groupId,
-                    g.Storage storage,
-                    g.PreRequestScript preRequestScript
+                    s.StatusCode StatusCode,
+                    s.Headers Headers,
+                    s.Body Body,
+                    s.PreResponseScript PreResponseScript,
+                    s.Settings Settings,
+                    s.GroupId GroupId,
+                    g.Storage Storage,
+                    g.PreRequestScript PreRequestScript
                 FROM
                     MockService s
                     LEFT JOIN MockGroup g ON s.GroupId = g.ID
@@ -232,7 +207,7 @@
             if (!service) {
                 throw new Error("service not found")
             }
-            const settings = service.settings ? JSON.parse(service.settings) : {}
+            const settings = service.Settings ? JSON.parse(service.Settings) : {}
             if (settings.time) {
                 setTimeout(() => { }, settings.time)
             }
@@ -241,29 +216,29 @@
                     body: requestBody,
                 },
                 response: {
-                    status: service.status || 200,
-                    headers: JSON.parse(service.headers || "{}"),
-                    body: !!~service.headers.indexOf("json") ? this.json52any(service.body || "{}") : service.body,
+                    status: service.StatusCode || 200,
+                    headers: JSON.parse(service.Headers || "{}"),
+                    body: !!~service.Headers.indexOf("json") ? this.json52any(service.Body || "{}") : service.Body,
                 },
-                storage: JSON.parse(service.storage || "{}"),
+                storage: JSON.parse(service.Storage || "{}"),
                 mock: (url, requestBody?: string) => this.mock(url, requestBody),
             }
-            if (service.preRequestScript) {
-                context.response.body = (new Function("$", service.preRequestScript))(context) ?? context.response.body
+            if (service.PreRequestScript) {
+                context.response.body = (new Function("$", service.PreRequestScript))(context) ?? context.response.body
             }
-            if (service.preResponseScript) {
-                context.response.body = (new Function("$", service.preResponseScript))(context) ?? context.response.body
+            if (service.PreResponseScript) {
+                context.response.body = (new Function("$", service.PreResponseScript))(context) ?? context.response.body
             }
-            const newStorage = JSON.stringify(context.storage)
-            if (newStorage !== service.storage) {
+            const storage = JSON.stringify(context.storage)
+            if (storage !== service.Storage) {
                 helper.update("MockGroup", {
                     conditions: [{
                         field: "ID",
                         operator: "=",
-                        value: service.groupId,
+                        value: service.GroupId,
                     }],
                     conjunction: "AND",
-                }, { Storage: newStorage })
+                }, { Storage: storage })
             }
             return context.response
         }
@@ -276,26 +251,6 @@
             }
         }
     })
-
-    type Group = {
-        id?: number
-        name: string
-        active: boolean
-        storage: string
-        preRequestScript: string
-    }
-
-    type Service = {
-        id?: number
-        group: number
-        active: boolean
-        url: string
-        status: number
-        headers: string
-        body: string
-        preResponseScript: string
-        settings: string
-    }
     ```
 
 2. Create a resource with url `/resource/mockd`.
@@ -309,7 +264,6 @@
         <meta name="viewport" content="maximum-scale=1.0">
         <link rel="stylesheet" href="/libs/element-plus/2.10.5/index.min.css" />
         <script src="/libs/vue/3.5.18/vue.global.prod.min.js"></script>
-        <!-- <script src="https://cdn.bootcdn.net/ajax/libs/vue/3.5.18/vue.global.min.js"></script> -->
         <script src="/libs/element-plus/2.10.5/index.full.min.js"></script>
         <script src="/libs/element-plus-icons-vue/2.3.1/index.iife.min.js"></script>
         <base target="_blank" />
@@ -345,8 +299,8 @@
             <el-card style="position: sticky; top: 0; z-index: 999;">
                 <el-row style="padding-bottom: 10px;">
                     <el-select v-model="this['proxy.group.id']" placeholder="Select a group" clearable @change="onServiceFetch" style="flex-grow: 1; width: fit-content;">
-                        <el-option v-for="group in group.records" :key="group.id" :label="group.name" :value="group.id">
-                            <span v-if="group.active" style="font-weight: bolder;">{{ group.name }}</span>
+                        <el-option v-for="group in group.records" :key="group.ID" :label="group.Name" :value="group.ID">
+                            <span v-if="!!group.Active" style="font-weight: bolder;">{{ group.Name }}</span>
                         </el-option>
                     </el-select>
                     <div style="margin-left: auto; display: inline-flex;">
@@ -381,37 +335,37 @@
                     <el-table v-loading="service.loading" :data="service.records" :row-class-name="onServiceClass" @selection-change="(rows) => this.service.selections = rows" @row-click="onServiceSelect">
                         <el-table-column type="selection" width="40">
                         </el-table-column>
-                        <el-table-column label="#" width="60">
+                        <el-table-column label="ID" width="60">
                             <template #default="scope">
-                                <span>{{ scope.$index }}</span>
+                                {{ scope.row.ID }}
                             </template>
                         </el-table-column>
-                        <el-table-column label="URL" prop="url" :show-overflow-tooltip="true">
+                        <el-table-column label="URL" :show-overflow-tooltip="true">
                             <template #default="scope">
                                 <el-link type="primary" @click="onServiceEdit(scope.row)">
-                                    {{ scope.row.url }}
+                                    {{ scope.row.URL }}
                                 </el-link>
-                                <el-text v-if="scope.row.settings.name" type="info" style="margin-left: 8px;">
-                                    {{ scope.row.settings.name }}
+                                <el-text v-if="scope.row.Settings.name" type="info" style="margin-left: 8px;">
+                                    {{ scope.row.Settings.name }}
                                 </el-text>
                             </template>
                         </el-table-column>
                         <el-table-column label="Status Code" width="120">
                             <template #default="scope">
-                                {{ scope.row.status }}
+                                {{ scope.row.StatusCode }}
                             </template>
                         </el-table-column>
                         <el-table-column label="Body Size" width="100">
                             <template #default="scope">
-                                {{ ((scope.row.body?.length ?? 0) / 1024).toFixed(2) }} KB
+                                {{ ((scope.row.Body?.length ?? 0) / 1024).toFixed(2) }} KB
                             </template>
                         </el-table-column>
                         <el-table-column label="Operation" width="100">
                             <template #default="scope">
-                                <el-switch v-model="scope.row.active" size="small" style="margin-right: 12px;"
+                                <el-switch v-model="scope.row.Active" size="small" style="margin-right: 12px;"
                                     @change="onServiceActiveSwitch(scope.row)">
                                 </el-switch>
-                                <el-button link type="danger" @click="onServiceDelete([scope.row.id])" :icon="Delete">
+                                <el-button link type="danger" @click="onServiceDelete([scope.row.ID])" :icon="Delete">
                                 </el-button>
                             </template>
                         </el-table-column>
@@ -422,16 +376,16 @@
             </el-card>
             <el-dialog v-model="group.dialog.visible">
                 <template #header>
-                    <el-input v-model="group.dialog.draft.name" placeholder="Please input group name"></el-input>
+                    <el-input v-model="group.dialog.draft.Name" placeholder="Please input group name"></el-input>
                 </template>
                 <el-form>
                     <el-tabs tab-position="left" style="height: 500px;">
                         <el-tab-pane label="Storage" lazy>
-                            <monaco-editor v-model="group.dialog.draft.storage" height="500px"
+                            <monaco-editor v-model="group.dialog.draft.Storage" height="500px"
                                 language="json"></monaco-editor>
                         </el-tab-pane>
                         <el-tab-pane label="Pre-Request Script" lazy>
-                            <monaco-editor v-model="group.dialog.draft.preRequestScript" height="500px"
+                            <monaco-editor v-model="group.dialog.draft.PreRequestScript" height="500px"
                                 language="typescript"></monaco-editor>
                         </el-tab-pane>
                     </el-tabs>
@@ -445,33 +399,33 @@
             </el-dialog>
             <el-dialog v-model="service.dialog.visible" title="Service">
                 <template #header>
-                    <el-input v-model="service.dialog.draft.url" placeholder="Please input service url"></el-input>
+                    <el-input v-model="service.dialog.draft.URL" placeholder="Please input service url"></el-input>
                 </template>
                 <el-form>
                     <el-tabs tab-position="left" style="height: 500px;">
                         <el-tab-pane label="Body" lazy>
-                            <monaco-editor v-model="service.dialog.draft.body" height="500px"
-                                :language="!!~service.dialog.draft.headers.indexOf('json') ? 'json5' : 'html'"></monaco-editor>
+                            <monaco-editor v-model="service.dialog.draft.Body" height="500px"
+                                :language="!!~service.dialog.draft.Headers.indexOf('json') ? 'json5' : 'html'"></monaco-editor>
                         </el-tab-pane>
                         <el-tab-pane label="Headers" lazy>
-                            <monaco-editor v-model="service.dialog.draft.headers" height="500px"
+                            <monaco-editor v-model="service.dialog.draft.Headers" height="500px"
                                 language="json"></monaco-editor>
                         </el-tab-pane>
                         <el-tab-pane label="Status Code">
-                            <el-input v-model.number="service.dialog.draft.status" type="number"
+                            <el-input v-model.number="service.dialog.draft.StatusCode" type="number"
                                 autocomplete="off"></el-input>
                         </el-tab-pane>
                         <el-tab-pane label="Pre-Response Script" lazy>
-                            <monaco-editor v-model="service.dialog.draft.preResponseScript" height="500px"
+                            <monaco-editor v-model="service.dialog.draft.PreResponseScript" height="500px"
                                 language="typescript"></monaco-editor>
                         </el-tab-pane>
                         <el-tab-pane label="Settings" lazy>
                             <el-form label-width="auto" style="max-width: 360px;">
                                 <el-form-item label="Name">
-                                    <el-input v-model="service.dialog.draft.settings.name"></el-input>
+                                    <el-input v-model="service.dialog.draft.Settings.name"></el-input>
                                 </el-form-item>
                                 <el-form-item label="Time">
-                                    <el-input v-model="service.dialog.draft.settings.time" type="number"></el-input>
+                                    <el-input v-model="service.dialog.draft.Settings.time" type="number"></el-input>
                                 </el-form-item>
                             </el-form>
                         </el-tab-pane>
@@ -500,14 +454,11 @@
                 computed: {
                     "proxy.group.id": {
                         get() {
-                            return this.group.record?.id ?? ""
+                            return this.group.record?.ID ?? ""
                         },
                         set(value) {
-                            this.group.record = this.group.records.find(i => i.id === value)
-                            if (value) {
-                                this.onServiceFetch(value)
-                            }
-                            document.title = this.group.record?.name || "Just mock it"
+                            this.group.record = this.group.records.find(i => i.ID === value)
+                            document.title = this.group.record?.Name || "Just mock it"
                         },
                     },
                 },
@@ -539,39 +490,40 @@
                 },
                 methods: {
                     onGroupFetch() {
-                        fetch("/service/mockd").then(r => {
+                        return fetch("/service/mockd").then(r => {
                             if (r.status !== 200) {
                                 throw new Error(r.statusText)
                             }
                             return r.json()
                         }).then(({ data: groups }) => {
                             this.group.records = groups
-                            this["proxy.group.id"] = groups.find(i => i.active)?.id
+                            this["proxy.group.id"] = groups.find(i => i.Active)?.ID
+                            this.onServiceFetch()
                         }).catch(e => {
                             ElMessage.error(e.message)
                         })
                     },
                     onGroupEdit(record) {
                         this.group.dialog.draft = {
-                            name: new Date().toISOString().replace(/[-T:\.Z]/g, ""),
-                            storage: "",
-                            preRequestScript: "",
+                            Name: new Date().toISOString().replace(/[-T:\.Z]/g, ""),
+                            Storage: "",
+                            PreRequestScript: "",
                             ...this.group.record,
-                            active: true,
+                            Active: true,
                         }
-                        ;["storage"].forEach(n => this.group.dialog.draft[n] = JSON.stringify(JSON.parse(this.group.dialog.draft[n] || "{}"), undefined, 2))
+                        ;["Storage"].forEach(n => this.group.dialog.draft[n] = JSON.stringify(JSON.parse(this.group.dialog.draft[n] || "{}"), undefined, 2))
                         this.group.dialog.visible = true
                     },
                     onGroupDialogSubmit() {
-                        if (!this.group.dialog.draft.name) {
+                        if (!this.group.dialog.draft.Name) {
                             ElMessage.warning("Group name is required")
                             return
                         }
-                        fetch(`/service/mockd?g=${this.group.dialog.draft.id ?? ""}`, {
-                            method: this.group.dialog.draft.id ? "PUT" : "POST",
+                        fetch(`/service/mockd?group=${this.group.dialog.draft.ID ?? ""}`, {
+                            method: this.group.dialog.draft.ID ? "PUT" : "POST",
                             body: JSON.stringify({
                                 ...this.group.dialog.draft,
-                                storage: JSON.stringify(JSON.parse(this.group.dialog.draft.storage || "{}")),
+                                storage: JSON.stringify(JSON.parse(this.group.dialog.draft.Storage || "{}")),
                             })
                         }).then(r => {
                             if (r.status !== 200) {
@@ -592,7 +544,7 @@
                                 if (action === "confirm") {
                                     instance.confirmButtonLoading = true
                                     instance.confirmButtonText = "Delete..."
-                                    fetch(`/service/mockd?g=${this.group.record.id}`, {
+                                    fetch(`/service/mockd?group=${this["proxy.group.id"]}`, {
                                         method: "DELETE",
                                     }).then(r => {
                                         if (r.status !== 200) {
@@ -620,35 +572,19 @@
                             const { $group, entries } = JSON.parse(this.result).log
                             fetch("/service/mockd", {
                                 method: "POST",
-                                body: JSON.stringify($group),
+                                body: JSON.stringify($group ?? {
+                                    Name: Date.now() + "",
+                                    Active: true,
+                                    Storage: "",
+                                    PreRequestScript: "",
+                                }),
                             }).then(r => {
                                 if (r.status !== 200) {
                                     throw new Error(r.statusText)
                                 }
                                 return r.json()
                             }).then(r => {
-                                return fetch("/service/mockd", {
-                                    method: "POST",
-                                    body: JSON.stringify(entries.filter(i => i._resourceType === "xhr").map(i => {
-                                        return {
-                                            group: r.data,
-                                            active: true,
-                                            url: i.request.url.replace(/^https?:\/\/[^\/]+/, "").replace(/\?.*$/, ""),
-                                            status: i.response.status,
-                                            headers: JSON.stringify(i.response.headers.filter(i => that.constants.HEADER_WHITELIST.includes(i.name.toUpperCase())).reduce((p, c) => {
-                                                p[c.name] = c.value
-                                                return p
-                                            }, {})),
-                                            body: i.response.content?.text,
-                                            preResponseScript: i.$preResponseScript,
-                                            settings: JSON.stringify(i.$settings),
-                                        }
-                                    })),
-                                }).then(r => {
-                                    if (r.status !== 200) {
-                                        throw new Error(r.statusText)
-                                    }
-                                })
+                                return that.onServiceImport(undefined, undefined, entries, r.data)
                             }).then(() => {
                                 that.onGroupFetch()
                             }).catch(e => {
@@ -670,18 +606,18 @@
                                     return {
                                         _resourceType: "xhr",
                                         request: {
-                                            url: i.url,
+                                            url: i.URL,
                                         },
                                         response: {
-                                            status: i.status,
-                                            headers: Object.entries(JSON.parse(i.headers)).map(i => { return { name: i[0], value: i[1] } }),
+                                            status: i.StatusCode,
+                                            headers: Object.entries(JSON.parse(i.Headers)).map(i => { return { name: i[0], value: i[1] } }),
                                             content: {
-                                                text: i.body,
+                                                text: i.Body,
                                             },
                                         },
-                                        time: i.settings.time ?? 0,
-                                        $settings: i.settings,
-                                        $preResponseScript: i.preResponseScript,
+                                        time: i.Settings.time ?? 0,
+                                        $settings: i.Settings,
+                                        $preResponseScript: i.PreResponseScript,
                                     }
                                 })
                             }
@@ -689,12 +625,12 @@
                         a.download = Date.now() + ".har"
                         a.click()
                     },
-                    onServiceFetch(group = this.group.record.id) {
+                    onServiceFetch(group = this["proxy.group.id"]) {
                         if (!group) {
                             return
                         }
                         this.service.loading = true
-                        fetch(`/service/mockd?g=${group}`).then(r => {
+                        fetch(`/service/mockd?group=${group}`).then(r => {
                             if (r.status !== 200) {
                                 throw new Error(r.statusText)
                             }
@@ -703,7 +639,8 @@
                             this.service.records = services.map(i => {
                                 return {
                                     ...i,
-                                    settings: JSON.parse(i.settings),
+                                    Active: !!i.Active,
+                                    Settings: JSON.parse(i.Settings),
                                 }
                             })
                         }).catch(e => {
@@ -712,38 +649,42 @@
                             this.service.loading = false
                         })
                     },
-                    onServiceImport(file) {
-                        const that = this,
-                            reader = new FileReader()
-                        reader.onload = function () {
-                            fetch("/service/mockd", {
+                    onServiceImport(file, _, entries, group) {
+                        if (!file && !_ && entries && group) {
+                            const cache = this.service.records.filter(i => i.active).reduce((p, c) => { p[c.url] = false; return p; }, {})
+                            return fetch("/service/mockd?group=" + group, {
                                 method: "POST",
                                 body: JSON.stringify(entries.filter(i => i._resourceType === "xhr").map(i => {
+                                    const URL = i.request.url.replace(/^https?:\/\/[^\/]+/, "").replace(/\?.*$/, "")
                                     return {
-                                        group: this.group.record.id,
-                                        active: false,
-                                        url: i.request.url.replace(/^https?:\/\/[^\/]+/, "").replace(/\?.*$/, ""),
-                                        status: i.response.status,
-                                        headers: JSON.stringify(i.response.headers.filter(i => that.constants.HEADER_WHITELIST.includes(i.name.toUpperCase())).reduce((p, c) => {
+                                        Active: cache[URL] ?? !(cache[URL] = false),
+                                        URL,
+                                        StatusCode: i.response.status,
+                                        Headers: JSON.stringify(i.response.headers.filter(i => this.constants.HEADER_WHITELIST.includes(i.name.toUpperCase())).reduce((p, c) => {
                                             p[c.name] = c.value
                                             return p
                                         }, {})),
-                                        body: i.response.content?.text,
-                                        preResponseScript: i.$preResponseScript,
-                                        settings: JSON.stringify(i.$settings),
+                                        Body: i.response.content?.text ?? "",
+                                        PreResponseScript: i.$preResponseScript ?? "",
+                                        Settings: JSON.stringify(i.$settings ?? "{}"),
                                     }
                                 })),
                             }).then(r => {
                                 if (r.status !== 200) {
                                     throw new Error(r.statusText)
                                 }
-                                this.onServiceFetch()
                             })
+                        }
+                        const that = this,
+                            reader = new FileReader()
+                        reader.onload = function () {
+                            that.onServiceImport(undefined, undefined, JSON.parse(this.result).log.entries, that.group.record.id)
+                                .then(r => that.onServiceFetch())
                         }
                         reader.readAsText(file.raw, "utf-8")
                     },
                     onServiceDelete(services) {
-                        fetch(`/service/mockd?g=${this.group.record.id}&s=${services.join(",")}`, {
+                        fetch(`/service/mockd?group=${this.group.record.id}&service=${services.join(",")}`, {
                             method: "DELETE",
                         }).then(r => {
                             if (r.status !== 200) {
@@ -756,22 +697,22 @@
                     },
                     onServiceEdit(record) {
                         this.service.dialog.draft = {
-                            group: this.group.record.id,
-                            active: true,
-                            url: "",
-                            status: 200,
-                            headers: JSON.stringify({
+                            GroupId: this.group.record.ID,
+                            Active: true,
+                            URL: "",
+                            StatusCode: 200,
+                            Headers: JSON.stringify({
                                 "Content-Type":"application/json; charset=utf-8",
                             }, undefined, 2),
-                            body: "{}",
-                            preResponseScript: "",
-                            settings: {
+                            Body: "{}",
+                            PreResponseScript: "",
+                            Settings: {
                                 name: "",
                                 time: 0,
                             },
                             ...record,
                         }
-                        ;["headers", "body"].forEach(n => {
+                        ;["Headers", "Body"].forEach(n => {
                             try {
                                 this.service.dialog.draft[n] = JSON.stringify(JSON.parse(this.service.dialog.draft[n] || "{}"), undefined, 2)
                             } catch { }
@@ -784,7 +725,7 @@
                             method: "PUT",
                             body: JSON.stringify({
                                 ...record,
-                                settings: JSON.stringify(record.settings),
+                                Settings: JSON.stringify(record.Settings),
                             }),
                         }).then(r => {
                             if (r.status !== 200) {
@@ -793,20 +734,20 @@
                             if (!record.active) {
                                 return
                             }
-                            this.service.records.filter(i => i.active && i.url === record.url).forEach(i => {
-                                i.active = false
+                            this.service.records.filter(i => i.Active && i.URL === record.URL).forEach(i => {
+                                i.Active = false
                             })
-                            record.active = true
+                            record.Active = true
                         }).catch(e => {
                             ElMessage.error(e.message)
                         })
                     },
                     onServiceSelect(record) {
-                        this.service.highlights = this.service.records.filter(i => i.url === record.url)
+                        this.service.highlights = this.service.records.filter(i => i.URL === record.URL)
                     },
                     onServiceClass({ row }) {
                         let clz = ""
-                        if (!row.active) {
+                        if (!row.Active) {
                             clz += " disabled"
                         }
                         if (this.service.highlights.includes(row)) {
@@ -815,22 +756,22 @@
                         return clz
                     },
                     onServiceDialogPreview() {
-                        if (!this.service.dialog.draft.url) {
+                        if (!this.service.dialog.draft.URL) {
                             return
                         }
-                        window.open("/service/mockd?test&u=" + encodeURIComponent(this.service.dialog.draft.url))
+                        window.open("/service/mockd?test&u=" + encodeURIComponent(this.service.dialog.draft.URL))
                     },
                     onServiceDialogSubmit() {
-                        if (!this.service.dialog.draft.url) {
+                        if (!this.service.dialog.draft.URL) {
                             ElMessage.warning("Service url is required")
                             return
                         }
-                        ;["headers"].forEach(n => this.service.dialog.draft[n] = JSON.stringify(JSON.parse(this.service.dialog.draft[n] || "{}")))
-                        fetch(`/service/mockd`, {
-                            method: this.service.dialog.draft.id ? "PUT" : "POST",
+                        ;["Headers"].forEach(n => this.service.dialog.draft[n] = JSON.stringify(JSON.parse(this.service.dialog.draft[n] || "{}")))
+                        fetch(`/service/mockd?group=${this["proxy.group.id"]}&service=${this.service.dialog.draft.ID ?? ""}`, {
+                            method: this.service.dialog.draft.ID ? "PUT" : "POST",
                             body: JSON.stringify({
                                 ...this.service.dialog.draft,
-                                settings: JSON.stringify(this.service.dialog.draft.settings),
+                                Settings: JSON.stringify(this.service.dialog.draft.settings),
                             }),
                         }).then(r => {
                             if (r.status !== 200) {
