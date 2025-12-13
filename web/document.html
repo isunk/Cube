@@ -136,6 +136,9 @@
                         tertiaryBorderColor: "#D0E4FF", // 特定节点/分组边框色
                         tertiaryTextColor: "#00A4FF", // 特定节点/分组文字颜色
                     },
+                    flowchart: {
+                        curve: "stepBefore", // 控制流程图中连接线的弯曲风格：先垂直移动，然后水平转弯
+                    },
                 })
                 mermaid.init().then(() => this.setSvgScalable())
             },
@@ -284,6 +287,7 @@
 
 
 </html>
+
 
 
 
