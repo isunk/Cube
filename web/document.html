@@ -232,6 +232,9 @@
                     })
                     // 鼠标开始拖动
                     container.onmousedown = event => {
+                        if (event.button !== 1) {
+                            return
+                        }
                         event.preventDefault()
                         dragging = true
                         startX = event.clientX
@@ -285,9 +288,4 @@
     </script>
 </body>
 
-
 </html>
-
-
-
-
