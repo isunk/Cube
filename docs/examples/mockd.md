@@ -89,7 +89,9 @@
                 if (callback) {
                     return new ServiceResponse(200, undefined, `mockc.callbacks["${callback}"](${JSON.stringify(response)})`)
                 }
-                return new ServiceResponse(response.status, { ...this.CORD_HEADERS, ...response.headers }, JSON.stringify(response.body))
+                const headers = { ...this.CORD_HEADERS, ...response.headers },
+                    isJson = /"content-type":"application\/json/.test(JSON.stringify(headers))
+                return new ServiceResponse(response.status, headers, isJson ? JSON.stringify(response.body) : response.body)
             } catch (err) {
                 let status = 500
                 if (err.message === "service not found") {
