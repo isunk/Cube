@@ -771,7 +771,7 @@
                             method: this.service.dialog.draft.ID ? "PUT" : "POST",
                             body: JSON.stringify({
                                 ...this.service.dialog.draft,
-                                Settings: JSON.stringify(this.service.dialog.draft.settings),
+                                Settings: JSON.stringify(this.service.dialog.draft.Settings),
                             }),
                         }).then(r => {
                             if (r.status !== 200) {
