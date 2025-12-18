@@ -721,7 +721,7 @@
                         this.service.dialog.visible = true
                     },
                     onServiceActiveSwitch(record) {
-                        fetch(`/service/mockd`, {
+                        fetch(`/service/mockd?group=${this["proxy.group.id"]}&service=${record.ID ?? ""}`, {
                             method: "PUT",
                             body: JSON.stringify({
                                 ...record,
