@@ -6,7 +6,7 @@
     import * as JSON5 from "https://cdn.bootcdn.net/ajax/libs/json5/2.2.3/index.min.js"
     import { helper, ColumnType } from "./DbHelper"
 
-    interface Group {
+    type Group = {
         ID?: number
         Name: string
         Active: boolean
@@ -14,7 +14,7 @@
         PreRequestScript: string
     }
 
-    interface Service {
+    type Service = {
         ID?: number
         GroupId: number
         Active: boolean
@@ -26,15 +26,20 @@
         Settings: string
     }
 
+    enum MockType {
+        Group = "group",
+        Service = "service",
+    }
+
     export default (app => app.run.bind(app))(new class {
-        private CORD_HEADERS = {
+        private headers = {
             "Access-Control-Allow-Origin": "*",
             "Access-Control-Allow-Methods": "*",
             "Access-Control-Allow-Headers": "*",
         }
 
         public run(ctx: ServiceContext) {
-            const params = Object.entries(ctx.getForm()).reduce((p, c) => { p[c[0]] = c[1]?.[0]; return p; }, {}) as { [i in ("u" | "c" | "b") | ("group" | "service")]: string; },
+            const params = Object.entries(ctx.getForm()).reduce((p, c) => { p[c[0]] = c[1]?.[0]; return p; }, {}) as { [i in "u" | "c" | "b"]: string; } & { type: MockType; id: string; },
                 name = ctx.getPathVariables().name
 
             if ("setup" in params) {
@@ -43,35 +48,36 @@
 
             if ("test" in params || name) {
                 if (ctx.getMethod() === "OPTIONS") {
-                    return new ServiceResponse(200, this.CORD_HEADERS)
+                    return new ServiceResponse(200, this.headers)
                 }
                 return this.test(name || params.u, params.c, params.b ?? ctx.getBody()?.toString())
             }
 
+            if (params.type && !Object.values(MockType).includes(params.type)) {
+                throw new Error("invalid type")
+            }
             switch (ctx.getMethod()) {
                 case "POST":
-                    return this.post(params.group, ctx.getBody().toJson())
+                    return this.post(params.type, params.id, ctx.getBody().toJson())
                 case "DELETE":
-                    return this.delete(params.group, params.service)
+                    return this.delete(params.type, params.id.split(","))
                 case "PUT":
-                    return this.put(params.group, params.service, ctx.getBody().toJson())
+                    return this.put(params.type, params.id, ctx.getBody().toJson())
                 case "GET":
-                    return this.get(params.group)
+                    return this.get(params.type, params.id)
                 default:
                     return new ServiceResponse(405)
             }
         }
 
         public setup() {
-            helper.dropTable("MockGroup")
-            helper.createTable("MockGroup", [
+            helper.dropTable("MockGroup"); helper.createTable("MockGroup", [
                 { name: "Name", type: ColumnType.String, },
                 { name: "Active", type: ColumnType.Boolean, },
                 { name: "Storage", type: ColumnType.Text, },
                 { name: "PreRequestScript", type: ColumnType.Text, },
             ])
-            helper.dropTable("MockService")
-            helper.createTable("MockService", [
+            helper.dropTable("MockService"); helper.createTable("MockService", [
                 { name: "GroupId", type: ColumnType.Integer, },
                 { name: "Active", type: ColumnType.Boolean, },
                 { name: "URL", type: ColumnType.String, },
@@ -89,7 +95,7 @@
                 if (callback) {
                     return new ServiceResponse(200, undefined, `mockc.callbacks["${callback}"](${JSON.stringify(response)})`)
                 }
-                const headers = { ...this.CORD_HEADERS, ...response.headers },
+                const headers = { ...this.headers, ...response.headers },
                     isJson = /"content-type":"application\/json/i.test(JSON.stringify(headers))
                 return new ServiceResponse(response.status, headers, isJson ? JSON.stringify(response.body) : response.body)
             } catch (err) {
@@ -101,85 +107,63 @@
             }
         }
 
-        public post(group: string | undefined, input: Group | Service | Service[]) {
-            if (!group) {
+        public post(type: MockType, rid: string, input: Group | Service | Service[]) {
+            if (type === MockType.Group) {
                 input = input as Group
                 if (input.Active) {
                     helper.update("MockGroup", undefined, { Active: false })
                 }
                 return input.ID = helper.insert("MockGroup", input)
             }
-            return (Array.isArray(input) ? input as Service[] : [input as Service]).map(i => helper.insert("MockService", {
-                ...i,
-                GroupId: group,
-            }))
+            if (type === MockType.Service) {
+                return (Array.isArray(input) ? input : [input as Service]).map(i => helper.insert("MockService", {
+                    ...i,
+                    GroupId: rid,
+                }))
+            }
+            return 0
         }
 
-        public delete(group: string | undefined, services: string | undefined) {
-            if (services) {
+        public delete(type: MockType, ids: string[]) {
+            if (type === MockType.Service) {
                 return helper.delete("MockService", {
-                    conditions: [{
-                        field: "ID",
-                        operator: "in",
-                        value: services.split(","),
-                    }],
+                    conditions: [{ field: "ID", operator: "in", value: ids }],
                     conjunction: "AND",
                 })
             }
-            if (group) {
-                helper.delete("MockService", {
-                    conditions: [{
-                        field: "GroupId",
-                        operator: "=",
-                        value: group,
-                    }],
+            if (type === MockType.Group) {
+                return helper.delete("MockService", {
+                    conditions: [{ field: "GroupId", operator: "in", value: ids }],
                     conjunction: "AND",
-                })
-                return helper.delete("MockGroup", {
-                    conditions: [{
-                        field: "ID",
-                        operator: "=",
-                        value: group,
-                    }],
+                }) + helper.delete("MockGroup", {
+                    conditions: [{ field: "ID", operator: "in", value: ids }],
                     conjunction: "AND",
                 })
             }
             return 0
         }
 
-        public put(group: string | undefined, service: string | undefined, input: Group | Service) {
-            if (service) {
+        public put(type: MockType, rid: string, input: Group | Service) {
+            if (type === MockType.Service) {
                 input = input as Service
                 return helper.update("MockService", {
-                    conditions: [{
-                        field: "ID",
-                        operator: "=",
-                        value: service,
-                    }],
+                    conditions: [{ field: "ID", operator: "=", value: rid }],
                     conjunction: "AND",
                 }, input)
             }
-            if (group) {
+            if (type === MockType.Group) {
                 return helper.update("MockGroup", {
-                    conditions: [{
-                        field: "ID",
-                        operator: "=",
-                        value: group,
-                    }],
+                    conditions: [{ field: "ID", operator: "=", value: rid }],
                     conjunction: "AND",
                 }, input)
             }
             return 0
         }
 
-        public get(group: string | undefined): Group[] | Service[] {
-            if (group) {
+        public get(type: MockType, rid?: string): Group[] | Service[] {
+            if (type === MockType.Service) {
                 return helper.select("MockService", {
-                    conditions: [{
-                        field: "GroupId",
-                        operator: "=",
-                        value: group,
-                    }],
+                    conditions: [{ field: "GroupId", operator: "=", value: rid }],
                     conjunction: "AND",
                 }).sort((a, b) => a.URL.localeCompare(b.URL)).map(i => i)
             }
@@ -492,7 +476,7 @@
                 },
                 methods: {
                     onGroupFetch() {
-                        return fetch("/service/mockd").then(r => {
+                        return fetch("/service/mockd?type=group").then(r => {
                             if (r.status !== 200) {
                                 throw new Error(r.statusText)
                             }
@@ -521,7 +505,7 @@
                             ElMessage.warning("Group name is required")
                             return
                         }
-                        fetch(`/service/mockd?group=${this.group.dialog.draft.ID ?? ""}`, {
+                        fetch(`/service/mockd?type=group&id=${this.group.dialog.draft.ID ?? ""}`, {
                             method: this.group.dialog.draft.ID ? "PUT" : "POST",
                             body: JSON.stringify({
                                 ...this.group.dialog.draft,
@@ -546,7 +530,7 @@
                                 if (action === "confirm") {
                                     instance.confirmButtonLoading = true
                                     instance.confirmButtonText = "Delete..."
-                                    fetch(`/service/mockd?group=${this["proxy.group.id"]}`, {
+                                    fetch(`/service/mockd?type=group&id=${this["proxy.group.id"]}`, {
                                         method: "DELETE",
                                     }).then(r => {
                                         if (r.status !== 200) {
@@ -572,7 +556,7 @@
                             reader = new FileReader()
                         reader.onload = function () {
                             const { $group, entries } = JSON.parse(this.result).log
-                            fetch("/service/mockd", {
+                            fetch("/service/mockd?type=group", {
                                 method: "POST",
                                 body: JSON.stringify($group ?? {
                                     Name: Date.now() + "",
@@ -632,7 +616,7 @@
                             return
                         }
                         this.service.loading = true
-                        fetch(`/service/mockd?group=${group}`).then(r => {
+                        fetch(`/service/mockd?type=service&id=${group}`).then(r => {
                             if (r.status !== 200) {
                                 throw new Error(r.statusText)
                             }
@@ -654,7 +638,7 @@
                     onServiceImport(file, _, entries, group) {
                         if (!file && !_ && entries && group) {
                             const cache = this.service.records.filter(i => i.active).reduce((p, c) => { p[c.url] = false; return p; }, {})
-                            return fetch("/service/mockd?group=" + group, {
+                            return fetch("/service/mockd?type=service&id=" + group, {
                                 method: "POST",
                                 body: JSON.stringify(entries.filter(i => i._resourceType === "xhr").map(i => {
                                     const URL = i.request.url.replace(/^https?:\/\/[^\/]+/, "").replace(/\?.*$/, "")
@@ -686,7 +670,7 @@
                         reader.readAsText(file.raw, "utf-8")
                     },
                     onServiceDelete(services) {
-                        fetch(`/service/mockd?group=${this.group.record.id}&service=${services.join(",")}`, {
+                        fetch(`/service/mockd?type=service&id=${services.join(",")}`, {
                             method: "DELETE",
                         }).then(r => {
                             if (r.status !== 200) {
@@ -723,23 +707,22 @@
                         this.service.dialog.visible = true
                     },
                     onServiceActiveSwitch(record) {
-                        fetch(`/service/mockd?group=${this["proxy.group.id"]}&service=${record.ID ?? ""}`, {
+                        fetch(`/service/mockd?type=service&id=${record.ID}`, {
                             method: "PUT",
                             body: JSON.stringify({
-                                ...record,
-                                Settings: JSON.stringify(record.Settings),
+                                Active: record.Active,
                             }),
                         }).then(r => {
                             if (r.status !== 200) {
                                 throw new Error(r.statusText)
                             }    
-                            if (!record.active) {
+                            if (!record.Active) {
                                 return
                             }
-                            this.service.records.filter(i => i.Active && i.URL === record.URL).forEach(i => {
+                            this.service.records.filter(i => i != record && i.Active && i.URL === record.URL).forEach(i => {
                                 i.Active = false
+                                this.onServiceActiveSwitch(i)
                             })
-                            record.Active = true
                         }).catch(e => {
                             ElMessage.error(e.message)
                         })
@@ -769,7 +752,7 @@
                             return
                         }
                         ;["Headers"].forEach(n => this.service.dialog.draft[n] = JSON.stringify(JSON.parse(this.service.dialog.draft[n] || "{}")))
-                        fetch(`/service/mockd?group=${this["proxy.group.id"]}&service=${this.service.dialog.draft.ID ?? ""}`, {
+                        fetch(`/service/mockd?type=service&id=${this.service.dialog.draft.ID ?? ""}`, {
                             method: this.service.dialog.draft.ID ? "PUT" : "POST",
                             body: JSON.stringify({
                                 ...this.service.dialog.draft,
