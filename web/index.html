@@ -8,7 +8,7 @@
     <script src="/libs/element-plus/2.10.5/index.full.min.js"></script>
     <script src="/libs/element-plus-icons-vue/2.3.1/index.iife.min.js"></script>
     <title>Cube</title>
-    <base target="_blank" /><!-- 网页中所有的超链接的目标地址都在新建窗口中打开 -->
+    <base href="/" target="_blank" /><!-- 网页中所有的超链接的目标地址都在新建窗口中打开 -->
     <style>
         html, body {
             height: 100%;
@@ -77,7 +77,7 @@
                 </el-upload>
                 <el-button-group style="padding-left: 5px;">
                     <el-button :icon="Upload" :loading="button.upload.loading" @click="UploadClick">Import</el-button>
-                    <el-button :icon="Download" @click="onTableExport">Export</el-button>
+                    <el-button :icon="Download" :disabled="table.selection.reversion ? table.selection.values.length >= table.pagination.count : !table.selection.values.length" @click="onTableExport">Export</el-button>
                 </el-button-group>
                 <div style="margin-left: auto; display: inline-flex;">
                     <el-autocomplete v-model="table.search.keyword" placeholder="Enter keyword here" clearable @blur="onTableFetch(true)" :suffix-icon="Search" @select="onTableSearchSelect" :fetch-suggestions="onTableSearchSuggest" :trigger-on-focus="false">
@@ -95,6 +95,14 @@
             </el-row>
             <el-row>
                 <el-table v-loading="table.loading" :data="table.records" stripe :row-class-name="({ row: record }) => record.active ? '' : 'disabled'" @sort-change="onTableSortChange" table-layout="fixed">
+                    <el-table-column width="40">
+                        <template #header>
+                            <el-checkbox v-model="table.selection.reversion" :indeterminate="table.selection.values.length && table.selection.values.length < table.pagination.count" @change="onTableSelectAll"></el-checkbox>
+                        </template>
+                        <template #default="scope">
+                            <el-checkbox :model-value="table.selection.reversion !== table.selection.values.includes(scope.row.rowid)" @change="(value) => onTableSelect(value, scope.row.rowid)"></el-checkbox>
+                        </template>
+                    </el-table-column>
                     <el-table-column label="Name" prop="name" sortable :show-overflow-tooltip="true">
                         <template #default="scope">
                             <el-button link type="primary" @click="onTableRowEdit(scope.row)">
@@ -247,9 +255,10 @@
                     set(v) {
                         this.table.search.tag = v.join(",")
                     },
-                }
+                },
             },
             data() {
+                const minsize = [10, 8].find(i => i < (document.body.clientHeight - 304) / 49) ?? 5
                 return {
                     constants: {
                         type: {
@@ -302,9 +311,13 @@
                     },
                     table: {
                         records: [],
+                        selection: {
+                            values: [],
+                            reversion: false,
+                        },
                         pagination: {
-                            sizes: [[10, 8].find(i => i < (document.body.clientHeight - 304) / 49) ?? 5, 20, 50, 100],
-                            size: [10, 8].find(i => i < (document.body.clientHeight - 304) / 49) ?? 5,
+                            sizes: [minsize, 20, 50, 100],
+                            size: minsize,
                             index: 1,
                             count: 0,
                         },
@@ -330,6 +343,8 @@
                 onTableFetch(reset) {
                     if (reset) {
                         this.table.pagination.index = 1
+                        this.table.selection.values.length = 0
+                        this.table.selection.reversion = false
                     }
                     this.table.loading = true
                     fetch(`source?name=%25${this.table.search.keyword}%25&type=${this.table.search.type || ""}&tag=${this.table.search.tag}&from=${(this.table.pagination.index - 1) * this.table.pagination.size}&size=${this.table.pagination.size}&sort=${this.table.sort.prop} ${this.table.sort.order}&basic`).then(r => {
@@ -376,7 +391,7 @@
                                     that.button.upload.loading = false
                                 })
                             }
-                        fetch("source?size=999&basic").then(r => r.json()).then(r => {
+                        fetch("source?size=5000&basic").then(r => r.json()).then(r => {
                             const outputs = r.data.sources.reduce((map, e) => map.set(e.rowid, e.last_modified_date), new Map()),
                                 outdated = inputs.filter(e => e.last_modified_date < outputs.get(e.rowid)).map(e => e.rowid)
                             if (outdated.length === 0) {
@@ -404,9 +419,20 @@
                 onTableExport() {
                     // 移动端浏览器无法通过 window.open 在新标签打开链接，这里使用 a 标签下载
                     const a = document.createElement("a")
-                    a.href = `source?name=%25${this.table.search.keyword}%25&type=${this.table.search.type || ""}&tag=${this.table.search.tag}&size=5000&bulk`
+                    a.href = `source?name=%25${this.table.search.keyword}%25&type=${this.table.search.type || ""}&tag=${this.table.search.tag}&${this.table.selection.reversion ? "exclude" : "include"}=${this.table.selection.values.join(",")}&size=5000&bulk`
                     a.download = "" // 如果不设置 download 属性，移动端取消下载任务时，可能会影响当前页面的加载状态
                     a.click()
+                },
+                onTableSelect(checked, id) {
+                    if (this.table.selection.reversion !== checked) {
+                        this.table.selection.values.push(id)
+                    } else {
+                        this.table.selection.values.splice(this.table.selection.values.findIndex(value => value === id), 1)
+                    }
+                },
+                onTableSelectAll(checked) {
+                    this.table.selection.values.length = 0
+                    this.table.selection.reversion = checked
                 },
                 onTableSortChange({ prop, order }) {
                     if (!order) {

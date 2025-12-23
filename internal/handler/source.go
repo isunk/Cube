@@ -288,6 +288,7 @@ func handleSourceGet(w http.ResponseWriter, r *http.Request) (interface{}, bool,
 	// 初始化查询参数
 	name, stype := p.GetOrDefault("name", "%"), p.GetOrDefault("type", "%")
 	tag := p.GetOrDefault("tag", "")
+	include, exclude := p.GetOrDefault("include", ""), p.GetOrDefault("exclude", "")
 	from, size := p.GetIntOrDefault("from", 0), p.GetIntOrDefault("size", 10)
 	sort := p.Get("sort")
 
@@ -301,6 +302,19 @@ func handleSourceGet(w http.ResponseWriter, r *http.Request) (interface{}, bool,
 			params = append(params, "%"+v+"%")
 		}
 		wheres += ")"
+	}
+	// 构造 ID 过滤查询条件
+	if include != "" {
+		wheres += " and rowid in (" + strings.Repeat(",?", strings.Count(include, ",")+1)[1:] + ")"
+		for _, v := range strings.Split(include, ",") {
+			params = append(params, v)
+		}
+	}
+	if exclude != "" {
+		wheres += " and rowid not in (" + strings.Repeat(",?", strings.Count(exclude, ",")+1)[1:] + ")"
+		for _, v := range strings.Split(exclude, ",") {
+			params = append(params, v)
+		}
 	}
 	// 初始化排序条件
 	orders := "rowid desc"
