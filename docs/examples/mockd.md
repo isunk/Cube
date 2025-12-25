@@ -58,7 +58,7 @@
             }
             switch (ctx.getMethod()) {
                 case "POST":
-                    return this.post(params.type, params.id, ctx.getBody().toJson())
+                    return this.post(params.type, ctx.getBody().toJson())
                 case "DELETE":
                     return this.delete(params.type, params.id.split(","))
                 case "PUT":
@@ -107,7 +107,7 @@
             }
         }
 
-        public post(type: MockType, rid: string, input: Group | Service | Service[]) {
+        public post(type: MockType, input: Group | Service | Service[]) {
             if (type === MockType.Group) {
                 input = input as Group
                 if (input.Active) {
@@ -116,10 +116,7 @@
                 return input.ID = helper.insert("MockGroup", input)
             }
             if (type === MockType.Service) {
-                return (Array.isArray(input) ? input : [input as Service]).map(i => helper.insert("MockService", {
-                    ...i,
-                    GroupId: rid,
-                }))
+                return (Array.isArray(input) ? input : [input as Service]).map(i => helper.insert("MockService", i))
             }
             return 0
         }
@@ -143,27 +140,27 @@
             return 0
         }
 
-        public put(type: MockType, rid: string, input: Group | Service) {
+        public put(type: MockType, id: string, input: Group | Service) {
             if (type === MockType.Service) {
                 input = input as Service
                 return helper.update("MockService", {
-                    conditions: [{ field: "ID", operator: "=", value: rid }],
+                    conditions: [{ field: "ID", operator: "=", value: id }],
                     conjunction: "AND",
                 }, input)
             }
             if (type === MockType.Group) {
                 return helper.update("MockGroup", {
-                    conditions: [{ field: "ID", operator: "=", value: rid }],
+                    conditions: [{ field: "ID", operator: "=", value: id }],
                     conjunction: "AND",
                 }, input)
             }
             return 0
         }
 
-        public get(type: MockType, rid?: string): Group[] | Service[] {
+        public get(type: MockType, id?: string): Group[] | Service[] {
             if (type === MockType.Service) {
                 return helper.select("MockService", {
-                    conditions: [{ field: "GroupId", operator: "=", value: rid }],
+                    conditions: [{ field: "GroupId", operator: "=", value: id }],
                     conjunction: "AND",
                 }).sort((a, b) => a.URL.localeCompare(b.URL)).map(i => i)
             }
@@ -469,9 +466,6 @@
                                 visiable: false,
                             },
                         },
-                        constants: {
-                            HEADER_WHITELIST: ["Content-Type"].map(i => i.toUpperCase()),
-                        },
                     }
                 },
                 methods: {
@@ -638,15 +632,16 @@
                     onServiceImport(file, _, entries, group) {
                         if (!file && !_ && entries && group) {
                             const cache = this.service.records.filter(i => i.active).reduce((p, c) => { p[c.url] = false; return p; }, {})
-                            return fetch("/service/mockd?type=service&id=" + group, {
+                            return fetch("/service/mockd?type=service", {
                                 method: "POST",
                                 body: JSON.stringify(entries.filter(i => i._resourceType === "xhr").map(i => {
                                     const URL = i.request.url.replace(/^https?:\/\/[^\/]+/, "").replace(/\?.*$/, "")
                                     return {
+                                        GroupId: group,
                                         Active: cache[URL] ?? !(cache[URL] = false),
                                         URL,
                                         StatusCode: i.response.status,
-                                        Headers: JSON.stringify(i.response.headers.filter(i => this.constants.HEADER_WHITELIST.includes(i.name.toUpperCase())).reduce((p, c) => {
+                                        Headers: JSON.stringify(i.response.headers.reduce((p, c) => {
                                             p[c.name] = c.value
                                             return p
                                         }, {})),
