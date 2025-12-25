@@ -57,9 +57,7 @@ func serve() {
 		return
 	}
 
-	c := &tls.Config{
-		ClientAuth: tls.RequestClientCert, // 可通过 request.TLS.PeerCertificates 获取客户端证书
-	}
+	c := &tls.Config{}
 
 	if config.ClientCertVerify {
 		// 设置对服务端证书校验
