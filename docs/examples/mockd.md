@@ -267,8 +267,11 @@
             .el-table .disabled a {
                 color: #c0c4cc;
             }
+            .el-dialog__header {
+                display: flex;
+                align-items: center;
+            }
             .el-dialog__headerbtn {
-                height: 32px;
                 top: unset;
             }
             .el-pagination {
@@ -357,9 +360,10 @@
                     </el-pagination>
                 </el-row>
             </el-card>
-            <el-dialog v-model="group.dialog.visible">
+            <el-dialog v-model="group.dialog.visible" :fullscreen="group.dialog.fullscreen">
                 <template #header>
-                    <el-input v-model="group.dialog.draft.Name" placeholder="Please input group name"></el-input>
+                        <el-input v-model="group.dialog.draft.Name" placeholder="Please input group name"></el-input>
+                        <el-link underline="never" :icon="FullScreen" @click="() => group.dialog.fullscreen = !group.dialog.fullscreen" style="margin-left: 16px;"></el-link>
                 </template>
                 <el-form>
                     <el-tabs tab-position="left" style="height: 500px;">
@@ -380,9 +384,10 @@
                     </el-form-item>
                 </el-form>
             </el-dialog>
-            <el-dialog v-model="service.dialog.visible" title="Service">
+            <el-dialog v-model="service.dialog.visible" title="Service" :fullscreen="service.dialog.fullscreen">
                 <template #header>
                     <el-input v-model="service.dialog.draft.URL" placeholder="Please input service url"></el-input>
+                    <el-link underline="never" :icon="FullScreen" @click="() => service.dialog.fullscreen = !service.dialog.fullscreen" style="margin-left: 16px;"></el-link>
                 </template>
                 <el-form>
                     <el-tabs tab-position="left" style="height: 500px;">
@@ -428,9 +433,9 @@
             Vue.createApp({
                 setup() {
                     const { ref } = Vue
-                    const { Delete, Download, Plus, Upload, Check, } = ElementPlusIconsVue
+                    const { Delete, Download, Plus, Upload, Check, FullScreen } = ElementPlusIconsVue
                     return {
-                        Delete, Download, Plus, Upload, Check,
+                        Delete, Download, Plus, Upload, Check, FullScreen,
                         GroupUploadRef: ref(), ServiceUploadRef: ref(),
                     }
                 },
@@ -453,6 +458,7 @@
                             dialog: {
                                 draft: {},
                                 visiable: false,
+                                fullscreen: false,
                             },
                         },
                         service: {
@@ -464,6 +470,7 @@
                                 draft: {},
                                 record: {},
                                 visiable: false,
+                                fullscreen: false,
                             },
                         },
                     }
@@ -887,6 +894,7 @@
                                                 editor.setValue(newValue)
                                             }
                                         })
+                                        new ResizeObserver((e) => editor.layout()).observe(container.value)
                                     })
                                 })
                             return { container }
