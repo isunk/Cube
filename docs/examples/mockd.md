@@ -602,7 +602,7 @@
                         return Promise.resolve()
                             .then(() => {
                                 if (this.service.dialog.draft.ID) {
-                                    this.fetch("PUT", "Service", `ID=${this.service.dialog.draft.ID}`, this.service.dialog.draft)
+                                    return this.fetch("PUT", "Service", `ID=${this.service.dialog.draft.ID}`, this.service.dialog.draft)
                                 }
                                 return this.fetch("POST", "Service", "", this.service.dialog.draft)
                             })
