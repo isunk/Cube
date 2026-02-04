@@ -6,205 +6,204 @@
     import * as JSON5 from "https://cdn.bootcdn.net/ajax/libs/json5/2.2.3/index.min.js"
     import { helper, ColumnType } from "./DbHelper"
 
-    type Group = {
+    abstract class Record {
         ID?: number
+    }
+
+    class Collection extends Record {
         Name: string
-        Active: boolean
-        Storage: string
         PreRequestScript: string
+        Variables: string
     }
 
-    type Service = {
-        ID?: number
-        GroupId: number
+    class Service extends Record {
+        CollectionID: number
         Active: boolean
-        URL: string
-        StatusCode: number
-        Headers: string
-        Body: string
+        RequestMethod: string
+        RequestURL: string
+        ResponseCode: number
+        ResponseHeaders: string
+        ResponseBody: string
         PreResponseScript: string
-        Settings: string
     }
 
-    enum MockType {
-        Group = "group",
-        Service = "service",
+    class CorsServiceResponse extends ServiceResponse {
+        constructor(status = 200, headers = undefined, data = undefined) {
+            super(
+                status,
+                {
+                    "Access-Control-Allow-Origin": "*",
+                    "Access-Control-Allow-Methods": "*",
+                    "Access-Control-Allow-Headers": "*",
+                    ...headers,
+                },
+                data,
+            )
+        }
     }
 
-    export default (app => app.run.bind(app))(new class {
-        private headers = {
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Methods": "*",
-            "Access-Control-Allow-Headers": "*",
+    interface ServiceStrategy {
+        run()
+    }
+
+    class MetadataStrategy<T> implements ServiceStrategy {
+        private method: string
+
+        private requestBody: Buffer
+
+        private params: { ID: string, [name: string]: string }
+
+        private table: string
+
+        private isSetup: boolean
+
+        constructor(method: string, requestBody: Buffer, params: any) {
+            this.method = method
+            this.requestBody = requestBody
+            const { t, ...p } = params
+            this.params = p
+            this.table = "Mock" + t
+            this.isSetup = "setup" in params
         }
 
-        public run(ctx: ServiceContext) {
-            const params = Object.entries(ctx.getForm()).reduce((p, c) => { p[c[0]] = c[1]?.[0]; return p; }, {}) as { [i in "u" | "c" | "b"]: string; } & { type: MockType; id: string; },
-                name = ctx.getPathVariables().name
-
-            if ("setup" in params) {
+        run() {
+            if (this.isSetup) {
                 return this.setup()
             }
-
-            if ("test" in params || name) {
-                if (ctx.getMethod() === "OPTIONS") {
-                    return new ServiceResponse(200, this.headers)
-                }
-                return this.test(name || params.u, params.c, params.b ?? ctx.getBody()?.toString())
+            if (this.table && !["MockCollection", "MockService"].includes(this.table)) {
+                throw new Error("invalid table")
             }
-
-            if (params.type && !Object.values(MockType).includes(params.type)) {
-                throw new Error("invalid type")
-            }
-            switch (ctx.getMethod()) {
+            switch (this.method) {
                 case "POST":
-                    return this.post(params.type, ctx.getBody().toJson())
+                    return this.post(this.table, this.requestBody.toJson())
                 case "DELETE":
-                    return this.delete(params.type, params.id.split(","))
+                    return this.delete(this.table, this.params.ID.split(","))
                 case "PUT":
-                    return this.put(params.type, params.id, ctx.getBody().toJson())
+                    return this.put(this.table, this.params.ID, this.requestBody.toJson())
                 case "GET":
-                    return this.get(params.type, params.id)
+                    return this.get(this.table, this.params)
                 default:
                     return new ServiceResponse(405)
             }
         }
 
         public setup() {
-            helper.dropTable("MockGroup"); helper.createTable("MockGroup", [
+            helper.dropTable("MockCollection")
+            helper.createTable("MockCollection", [
                 { name: "Name", type: ColumnType.String, },
-                { name: "Active", type: ColumnType.Boolean, },
-                { name: "Storage", type: ColumnType.Text, },
                 { name: "PreRequestScript", type: ColumnType.Text, },
+                { name: "Variables", type: ColumnType.Text, },
             ])
-            helper.dropTable("MockService"); helper.createTable("MockService", [
-                { name: "GroupId", type: ColumnType.Integer, },
+            helper.dropTable("MockService")
+            helper.createTable("MockService", [
+                { name: "CollectionID", type: ColumnType.Integer, },
                 { name: "Active", type: ColumnType.Boolean, },
-                { name: "URL", type: ColumnType.String, },
-                { name: "StatusCode", type: ColumnType.Integer, },
-                { name: "Headers", type: ColumnType.Text, },
-                { name: "Body", type: ColumnType.Text, },
+                { name: "RequestMethod", type: ColumnType.String, },
+                { name: "RequestURL", type: ColumnType.String, },
+                { name: "ResponseCode", type: ColumnType.Integer, },
+                { name: "ResponseHeaders", type: ColumnType.Text, },
+                { name: "ResponseBody", type: ColumnType.Text, },
                 { name: "PreResponseScript", type: ColumnType.Text, },
-                { name: "Settings", type: ColumnType.Text, },
-            ]);
+            ])
         }
 
-        public test(url: string, callback?: string, requestBody?: string) {
+        public post(table: string, input: any | any[]) {
+            return (Array.isArray(input) ? input : [input]).map(i => helper.insert(table, i))
+        }
+
+        public delete(table: string, ids: string[]) {
+            return helper.delete(table, {
+                conditions: [{ field: "ID", operator: "in", value: ids }],
+                conjunction: "AND",
+            })
+        }
+
+        public put(table: string, id: string, input: any) {
+            return helper.update(table, {
+                conditions: [{ field: "ID", operator: "=", value: id }],
+                conjunction: "AND",
+            }, input)
+        }
+
+        public get(table: string, params: { [name: string]: string }) {
+            return helper.select(table, {
+                conditions: Object.entries({ "1": "1", ...params }).map(([field, value]) => {
+                    return { field, operator: "=", value }
+                }),
+                conjunction: "AND",
+            }).map(i => i)
+        }
+    }
+
+    class MockStrategy implements ServiceStrategy {
+        private method: string
+
+        private requestBody: string
+
+        private name: string
+
+        private callback: string
+
+        constructor(method: string, requestBody: Buffer, params: any, name: string) {
+            this.method = method
+            this.requestBody = params.b ?? this.requestBody?.toString()
+            this.name = (name || params.u)?.replace(/^\//, "")
+            this.callback = params.c
+        }
+
+        run() {
+            if (this.method === "OPTIONS") {
+                return new CorsServiceResponse(200)
+            }
+
             try {
-                const response = this.mock(url, requestBody && JSON.parse(decodeURIComponent(requestBody)))
-                if (callback) {
-                    return new ServiceResponse(200, undefined, `mockc.callbacks["${callback}"](${JSON.stringify(response)})`)
+                const response = this.mock(this.name, this.requestBody && JSON.parse(decodeURIComponent(this.requestBody)))
+                if (this.callback) {
+                    return new ServiceResponse(200, undefined, `mockc.callbacks["${this.callback}"](${JSON.stringify(response)})`)
                 }
-                const headers = { ...this.headers, ...response.headers },
-                    isJson = /"content-type":"application\/json/i.test(JSON.stringify(headers))
-                return new ServiceResponse(response.status, headers, isJson ? JSON.stringify(response.body) : response.body)
+                const isJson = /"content-type":"application\/json/i.test(JSON.stringify(response.headers))
+                return new CorsServiceResponse(response.status, response.headers, isJson ? JSON.stringify(response.body) : response.body)
             } catch (err) {
                 let status = 500
                 if (err.message === "service not found") {
                     status = 404
                 }
-                return callback ? new ServiceResponse(200, undefined, `mockc.callbacks["${callback}"](${JSON.stringify({ status, error: err.message })})`) : new ServiceResponse(status, undefined, { error: err.message })
+                return this.callback ? new ServiceResponse(200, undefined, `mockc.callbacks["${this.callback}"](${JSON.stringify({ status, error: err.message })})`) : new ServiceResponse(status, undefined, { error: err.message })
             }
-        }
-
-        public post(type: MockType, input: Group | Service | Service[]) {
-            if (type === MockType.Group) {
-                input = input as Group
-                if (input.Active) {
-                    helper.update("MockGroup", undefined, { Active: false })
-                }
-                return input.ID = helper.insert("MockGroup", input)
-            }
-            if (type === MockType.Service) {
-                return (Array.isArray(input) ? input : [input as Service]).map(i => helper.insert("MockService", i))
-            }
-            return 0
-        }
-
-        public delete(type: MockType, ids: string[]) {
-            if (type === MockType.Service) {
-                return helper.delete("MockService", {
-                    conditions: [{ field: "ID", operator: "in", value: ids }],
-                    conjunction: "AND",
-                })
-            }
-            if (type === MockType.Group) {
-                return helper.delete("MockService", {
-                    conditions: [{ field: "GroupId", operator: "in", value: ids }],
-                    conjunction: "AND",
-                }) + helper.delete("MockGroup", {
-                    conditions: [{ field: "ID", operator: "in", value: ids }],
-                    conjunction: "AND",
-                })
-            }
-            return 0
-        }
-
-        public put(type: MockType, id: string, input: Group | Service) {
-            if (type === MockType.Service) {
-                input = input as Service
-                return helper.update("MockService", {
-                    conditions: [{ field: "ID", operator: "=", value: id }],
-                    conjunction: "AND",
-                }, input)
-            }
-            if (type === MockType.Group) {
-                return helper.update("MockGroup", {
-                    conditions: [{ field: "ID", operator: "=", value: id }],
-                    conjunction: "AND",
-                }, input)
-            }
-            return 0
-        }
-
-        public get(type: MockType, id?: string): Group[] | Service[] {
-            if (type === MockType.Service) {
-                return helper.select("MockService", {
-                    conditions: [{ field: "GroupId", operator: "=", value: id }],
-                    conjunction: "AND",
-                }).sort((a, b) => a.URL.localeCompare(b.URL)).map(i => i)
-            }
-            return helper.select("MockGroup").map(i => i)
         }
 
         private mock(url: string, requestBody: any): { status: number; headers: any; body: any; } {
             const service = helper.query(`
                 SELECT
-                    s.StatusCode StatusCode,
-                    s.Headers Headers,
-                    s.Body Body,
+                    s.CollectionID CollectionID,
+                    s.RequestMethod RequestMethod,
+                    s.ResponseCode ResponseCode,
+                    s.ResponseHeaders ResponseHeaders,
+                    s.ResponseBody ResponseBody,
                     s.PreResponseScript PreResponseScript,
-                    s.Settings Settings,
-                    s.GroupId GroupId,
-                    g.Storage Storage,
-                    g.PreRequestScript PreRequestScript
+                    c.Variables Variables,
+                    c.PreRequestScript PreRequestScript
                 FROM
                     MockService s
-                    LEFT JOIN MockGroup g ON s.GroupId = g.ID
+                    LEFT JOIN MockCollection c ON s.CollectionID = c.ID
                 WHERE
-                    g.Active = 1
-                    AND s.Active = 1
-                    AND s.URL like ?
+                    s.Active = 1
+                    AND s.RequestURL like ?
                 LIMIT 1
             `, "%" + url.replace(/^https?:\/\/[^\/]+/, "").replace(/\?.*$/, ""))?.pop()
             if (!service) {
                 throw new Error("service not found")
-            }
-            const settings = service.Settings ? JSON.parse(service.Settings) : {}
-            if (settings.time) {
-                setTimeout(() => { }, settings.time)
             }
             const context = {
                 request: {
                     body: requestBody,
                 },
                 response: {
-                    status: service.StatusCode || 200,
-                    headers: JSON.parse(service.Headers || "{}"),
-                    body: !!~service.Headers.indexOf("json") ? this.json52any(service.Body || "{}") : service.Body,
+                    status: service.ResponseCode || 200,
+                    headers: JSON.parse(service.ResponseHeaders || "{}"),
+                    body: !!~service.ResponseHeaders.indexOf("json") ? this.json52any(service.ResponseBody || "{}") : service.ResponseBody,
                 },
-                storage: JSON.parse(service.Storage || "{}"),
-                mock: (url, requestBody?: string) => this.mock(url, requestBody),
+                variables: JSON.parse(service.Variables || "{}"),
             }
             if (service.PreRequestScript) {
                 context.response.body = (new Function("$", service.PreRequestScript))(context) ?? context.response.body
@@ -212,16 +211,12 @@
             if (service.PreResponseScript) {
                 context.response.body = (new Function("$", service.PreResponseScript))(context) ?? context.response.body
             }
-            const storage = JSON.stringify(context.storage)
-            if (storage !== service.Storage) {
-                helper.update("MockGroup", {
-                    conditions: [{
-                        field: "ID",
-                        operator: "=",
-                        value: service.GroupId,
-                    }],
+            const variables = JSON.stringify(context.variables)
+            if (variables !== service.Variables) {
+                helper.update("MockCollection", {
+                    conditions: [{ field: "ID", operator: "=", value: service.CollectionID, }],
                     conjunction: "AND",
-                }, { Storage: storage })
+                }, { variables: variables })
             }
             return context.response
         }
@@ -230,8 +225,19 @@
             try {
                 return JSON5.parse(text, undefined)
             } catch (e) {
-                throw new Error("inavlid json5: " + e.message)
+                throw new Error("invalid json5: " + e.message)
             }
+        }
+    }
+
+    export default (app => app.run.bind(app))(new class {
+        public run(ctx: ServiceContext) {
+            const params = Object.entries(ctx.getForm()).reduce((p, c) => { p[c[0]] = c[1]?.[0]; return p; }, {}),
+                name = ctx.getPathVariables().name
+            if ("test" in params || name) {
+                return new MockStrategy(ctx.getMethod(), ctx.getBody(), params, name).run()
+            }
+            return new MetadataStrategy(ctx.getMethod(), ctx.getBody(), params).run()
         }
     })
     ```
@@ -256,176 +262,138 @@
                 margin: 0;
                 background-color: #f0f2f5;
             }
-            .el-table {
-                border-top: 1px solid #dcdfe6;
-            }
-            .el-table .disabled {
-                border-color: #e4e7ed;
-                color: #c0c4cc;
-                cursor: not-allowed;
-            }
-            .el-table .disabled a {
-                color: #c0c4cc;
-            }
             .el-dialog__header {
                 display: flex;
                 align-items: center;
             }
-            .el-dialog__headerbtn {
-                top: unset;
+            .el-dialog__header .el-link {
+                margin-left: 16px;
             }
-            .el-pagination {
-                margin-top: 13px;
+            .el-dialog__headerbtn {
+                top: 10px;
+            }
+            .el-dialog {
+                display: flex;
+                flex-direction: column;
+            }
+            .el-dialog__body {
+                flex-grow: 1;
+            }
+            .el-dialog__body .el-tabs, .el-tab-pane {
+                height: 500px;
+            }
+            .is-fullscreen .el-dialog__body .el-tabs, .el-tab-pane {
+                height: 100%;
             }
         </style>
     </head>
 
     <body>
         <div id="app" v-cloak style="padding: 32px; position: relative;">
-            <el-card style="position: sticky; top: 0; z-index: 999;">
-                <el-row style="padding-bottom: 10px;">
-                    <el-select v-model="this['proxy.group.id']" placeholder="Select a group" clearable @change="onServiceFetch" style="flex-grow: 1; width: fit-content;">
-                        <el-option v-for="group in group.records" :key="group.ID" :label="group.Name" :value="group.ID">
-                            <span v-if="!!group.Active" style="font-weight: bolder;">{{ group.Name }}</span>
-                        </el-option>
+            <el-card>
+                <el-row>
+                    <el-select v-model="collection.ID" placeholder="Select a collection" clearable @change="onCollectionSelect" style="flex-grow: 1; width: fit-content;">
+                        <el-option v-for="item in collection.records" :key="item.ID" :label="item.Name" :value="item.ID"></el-option>
                     </el-select>
                     <div style="margin-left: auto; display: inline-flex;">
-                        <el-button-group style="padding-left: 5px;" v-if="group.record">
-                            <el-button :icon="Check" @click="onGroupEdit"></el-button>
-                            <el-button :icon="Download" @click="onGroupExport"></el-button>
-                            <el-button :icon="Delete" @click="onGroupDelete"></el-button>
-                        </el-button-group>
-                        <el-button-group style="padding-left: 5px;" v-else>
-                            <el-button :icon="Plus" @click="onGroupEdit()"></el-button>
-                            <el-upload :auto-upload="false" action="" :on-change="onGroupImport" :show-file-list="false" accept=".har" style="display: none;">
-                                <el-button ref="GroupUploadRef"></el-button>
-                            </el-upload>
-                            <el-button :icon="Upload" @click="() => this.$refs.GroupUploadRef.ref.click()"></el-button>
+                        <el-button-group style="padding-left: 5px;">
+                            <el-button :disabled="+collection.ID" :icon="Plus" @click="onCollectionDialogOpen()"></el-button>
+                            <el-button :disabled="!collection.ID" :icon="Edit" @click="onCollectionDialogOpen(collection.ID)"></el-button>
+                            <el-button :disabled="!collection.ID" :icon="Delete" @click="onCollectionDelete"></el-button>
+                            <el-button :disabled="+collection.ID" :icon="Upload" @click="() => this.$refs.CollectionUploadRef.ref.click()"></el-button><el-upload :auto-upload="false" action="" :on-change="onCollectionImport" :show-file-list="false" accept=".json" style="display: none;"><el-button ref="CollectionUploadRef"></el-button></el-upload>
+                            <el-button :disabled="!collection.ID" :icon="Download" @click="onCollectionExport"></el-button>
                         </el-button-group>
                     </div>
                 </el-row>
             </el-card>
-            <br />
-            <el-card v-if="group.record">
-                <el-row style="padding-bottom: 10px;">
+            <el-card style="margin-top: 32px;">
+                <el-row>
                     <el-button-group style="padding-left: 5px;">
-                        <el-button :icon="Plus" @click="onServiceEdit()"></el-button>
-                        <el-upload :auto-upload="false" action="" :on-change="onServiceImport" :show-file-list="false" accept=".har" style="display: none;">
-                            <el-button ref="ServiceUploadRef"></el-button>
-                        </el-upload>
-                        <el-button :icon="Upload" @click="() => this.$refs.ServiceUploadRef.ref.click()"></el-button>
-                        <el-button :icon="Delete" @click="onServiceDelete(service.selections.map(i => i.id))" v-if="service.selections.length"></el-button>
+                        <el-button :disabled="!collection.ID" :icon="Plus" @click="onServiceDialogOpen()"></el-button>
+                        <el-button :disabled="!collection.ID" :icon="Upload" @click="() => this.$refs.ServiceUploadRef.ref.click()"></el-button><el-upload :auto-upload="false" action="" :on-change="onServiceImport" :show-file-list="false" accept=".har" style="display: none;"><el-button ref="ServiceUploadRef"></el-button></el-upload>
                     </el-button-group>
                 </el-row>
-                <el-row>
+                <el-row style="margin-top: 12px;">
                     <el-table v-loading="service.loading" :data="service.records" :row-class-name="onServiceClass" @selection-change="(rows) => this.service.selections = rows" @row-click="onServiceSelect">
-                        <el-table-column type="selection" width="40">
-                        </el-table-column>
                         <el-table-column label="ID" width="60">
                             <template #default="scope">
                                 {{ scope.row.ID }}
                             </template>
                         </el-table-column>
+                        <el-table-column label="Method" width="80">
+                            <template #default="scope">
+                                {{ scope.row.RequestMethod || "Any" }}
+                            </template>
+                        </el-table-column>
                         <el-table-column label="URL" :show-overflow-tooltip="true">
                             <template #default="scope">
-                                <el-link type="primary" @click="onServiceEdit(scope.row)">
-                                    {{ scope.row.URL }}
+                                <el-link type="primary" @click="onServiceDialogOpen(scope.row.ID)">
+                                    {{ scope.row.RequestURL }}
                                 </el-link>
-                                <el-text v-if="scope.row.Settings.name" type="info" style="margin-left: 8px;">
-                                    {{ scope.row.Settings.name }}
-                                </el-text>
                             </template>
                         </el-table-column>
                         <el-table-column label="Status Code" width="120">
                             <template #default="scope">
-                                {{ scope.row.StatusCode }}
+                                {{ scope.row.ResponseCode }}
                             </template>
                         </el-table-column>
                         <el-table-column label="Body Size" width="100">
                             <template #default="scope">
-                                {{ ((scope.row.Body?.length ?? 0) / 1024).toFixed(2) }} KB
+                                {{ ((scope.row.ResponseBody?.length ?? 0) / 1024).toFixed(2) }} KB
                             </template>
                         </el-table-column>
                         <el-table-column label="Operation" width="100">
                             <template #default="scope">
-                                <el-switch v-model="scope.row.Active" size="small" style="margin-right: 12px;"
-                                    @change="onServiceActiveSwitch(scope.row)">
+                                <el-switch v-model="scope.row.Active" size="small" @change="fetch('PUT', 'Service', `ID=${scope.row.ID}`, { Active: scope.row.Active })">
                                 </el-switch>
-                                <el-button link type="danger" @click="onServiceDelete([scope.row.ID])" :icon="Delete">
+                                <el-button link type="danger" @click="onServiceDelete(scope.row.ID)" :icon="Delete">
                                 </el-button>
                             </template>
                         </el-table-column>
                     </el-table>
-                    <el-pagination layout="total" :total="service.records.length">
+                    <el-pagination layout="total" :total="service.records.length" style="margin-top: 12px;">
                     </el-pagination>
                 </el-row>
             </el-card>
-            <el-dialog v-model="group.dialog.visible" :fullscreen="group.dialog.fullscreen">
+            <el-dialog v-model="collection.dialog.visible" :fullscreen="collection.dialog.fullscreen">
                 <template #header>
-                        <el-input v-model="group.dialog.draft.Name" placeholder="Please input group name"></el-input>
-                        <el-link underline="never" :icon="FullScreen" @click="() => group.dialog.fullscreen = !group.dialog.fullscreen" style="margin-left: 16px;"></el-link>
+                    <el-input v-model="collection.dialog.draft.Name" placeholder="Please input collection name"></el-input>
+                    <el-link underline="never" :icon="FullScreen" @click="collection.dialog.fullscreen = !collection.dialog.fullscreen"></el-link>
+                    <el-link underline="never" :icon="Check" @click="onCollectionDialogSubmit"></el-link>
                 </template>
-                <el-form>
-                    <el-tabs tab-position="left" style="height: 500px;">
-                        <el-tab-pane label="Storage" lazy>
-                            <monaco-editor v-model="group.dialog.draft.Storage" height="500px"
-                                language="json"></monaco-editor>
-                        </el-tab-pane>
-                        <el-tab-pane label="Pre-Request Script" lazy>
-                            <monaco-editor v-model="group.dialog.draft.PreRequestScript" height="500px"
-                                language="typescript"></monaco-editor>
-                        </el-tab-pane>
-                    </el-tabs>
-                    <el-form-item style="margin: 12px 0 0 0;">
-                        <div style="width: 100%; display: flex; justify-content: flex-end;">
-                            <el-button @click="onGroupDialogSubmit" type="primary">Submit</el-button>
-                            <el-button @click="group.dialog.visible = !group.dialog.visible">Cancel</el-button>
-                        </div>
-                    </el-form-item>
-                </el-form>
+                <el-tabs tab-position="left">
+                    <el-tab-pane label="Pre-Request Script" lazy>
+                        <monaco-editor v-model="collection.dialog.draft.PreRequestScript" language="typescript"></monaco-editor>
+                    </el-tab-pane>
+                    <el-tab-pane label="Variables" lazy>
+                        <monaco-editor v-model="collection.dialog.draft.Variables" language="json"></monaco-editor>
+                    </el-tab-pane>
+                </el-tabs>
             </el-dialog>
             <el-dialog v-model="service.dialog.visible" title="Service" :fullscreen="service.dialog.fullscreen">
                 <template #header>
-                    <el-input v-model="service.dialog.draft.URL" placeholder="Please input service url"></el-input>
-                    <el-link underline="never" :icon="FullScreen" @click="() => service.dialog.fullscreen = !service.dialog.fullscreen" style="margin-left: 16px;"></el-link>
+                    <el-input v-model="service.dialog.draft.RequestURL" placeholder="Please input service url"></el-input>
+                    <el-link underline="never" :icon="FullScreen" @click="service.dialog.fullscreen = !service.dialog.fullscreen"></el-link>
+                    <el-link underline="never" :icon="Position" @click="onServiceDialogPreview"></el-link>
+                    <el-link underline="never" :icon="Check" @click="onServiceDialogSubmit"></el-link>
                 </template>
-                <el-form>
-                    <el-tabs tab-position="left" style="height: 500px;">
-                        <el-tab-pane label="Body" lazy>
-                            <monaco-editor v-model="service.dialog.draft.Body" height="500px"
-                                :language="!!~service.dialog.draft.Headers.indexOf('json') ? 'json5' : 'html'"></monaco-editor>
-                        </el-tab-pane>
-                        <el-tab-pane label="Headers" lazy>
-                            <monaco-editor v-model="service.dialog.draft.Headers" height="500px"
-                                language="json"></monaco-editor>
-                        </el-tab-pane>
-                        <el-tab-pane label="Status Code">
-                            <el-input v-model.number="service.dialog.draft.StatusCode" type="number"
-                                autocomplete="off"></el-input>
-                        </el-tab-pane>
-                        <el-tab-pane label="Pre-Response Script" lazy>
-                            <monaco-editor v-model="service.dialog.draft.PreResponseScript" height="500px"
-                                language="typescript"></monaco-editor>
-                        </el-tab-pane>
-                        <el-tab-pane label="Settings" lazy>
-                            <el-form label-width="auto" style="max-width: 360px;">
-                                <el-form-item label="Name">
-                                    <el-input v-model="service.dialog.draft.Settings.name"></el-input>
-                                </el-form-item>
-                                <el-form-item label="Time">
-                                    <el-input v-model="service.dialog.draft.Settings.time" type="number"></el-input>
-                                </el-form-item>
-                            </el-form>
-                        </el-tab-pane>
-                    </el-tabs>
-                    <el-form-item style="margin: 12px 0 0 0;">
-                        <div style="width: 100%; display: flex; justify-content: flex-end;">
-                            <el-button @click="onServiceDialogPreview">Preview</el-button>
-                            <el-button type="primary" @click="onServiceDialogSubmit">Submit</el-button>
-                            <el-button @click="service.dialog.visible = !service.dialog.visible">Cancel</el-button>
-                        </div>
-                    </el-form-item>
-                </el-form>
+                <el-tabs tab-position="left">
+                    <el-tab-pane label="Method">
+                        <el-input v-model="service.dialog.draft.RequestMethod" placeholder="Any"></el-input>
+                    </el-tab-pane>
+                    <el-tab-pane label="Status Code">
+                        <el-input v-model.number="service.dialog.draft.ResponseCode" type="number"></el-input>
+                    </el-tab-pane>
+                    <el-tab-pane label="Headers" lazy>
+                        <monaco-editor v-model="service.dialog.draft.ResponseHeaders" language="json"></monaco-editor>
+                    </el-tab-pane>
+                    <el-tab-pane label="Body" lazy>
+                        <monaco-editor v-model="service.dialog.draft.ResponseBody" :language="!!~service.dialog.draft.ResponseHeaders?.indexOf('json') ? 'json5' : 'html'"></monaco-editor>
+                    </el-tab-pane>
+                    <el-tab-pane label="Pre-Response Script" lazy>
+                        <monaco-editor v-model="service.dialog.draft.PreResponseScript" language="typescript"></monaco-editor>
+                    </el-tab-pane>
+                </el-tabs>
             </el-dialog>
         </div>
         <script>
@@ -433,346 +401,222 @@
             Vue.createApp({
                 setup() {
                     const { ref } = Vue
-                    const { Delete, Download, Plus, Upload, Check, FullScreen } = ElementPlusIconsVue
+                    const { Check, Delete, Download, Edit, FullScreen, Plus, Position, Upload } = ElementPlusIconsVue
                     return {
-                        Delete, Download, Plus, Upload, Check, FullScreen,
-                        GroupUploadRef: ref(), ServiceUploadRef: ref(),
+                        Check, Delete, Download, Edit, FullScreen, Plus, Position, Upload,
+                        CollectionUploadRef: ref(), ServiceUploadRef: ref(),
                     }
                 },
                 computed: {
-                    "proxy.group.id": {
-                        get() {
-                            return this.group.record?.ID ?? ""
-                        },
-                        set(value) {
-                            this.group.record = this.group.records.find(i => i.ID === value)
-                            document.title = this.group.record?.Name || "Just mock it"
-                        },
-                    },
+
                 },
                 data() {
                     return {
-                        group: {
-                            record: undefined,
+                        collection: {
+                            ID: "",
                             records: [],
                             dialog: {
                                 draft: {},
-                                visiable: false,
+                                visible: false,
                                 fullscreen: false,
                             },
                         },
                         service: {
-                            loading: false,
+                            ID: "",
                             records: [],
-                            selections: [],
-                            highlights: [],
                             dialog: {
                                 draft: {},
-                                record: {},
-                                visiable: false,
+                                visible: false,
                                 fullscreen: false,
                             },
                         },
                     }
                 },
                 methods: {
-                    onGroupFetch() {
-                        return fetch("/service/mockd?type=group").then(r => {
-                            if (r.status !== 200) {
-                                throw new Error(r.statusText)
-                            }
-                            return r.json()
-                        }).then(({ data: groups }) => {
-                            this.group.records = groups
-                            this["proxy.group.id"] = groups.find(i => i.Active)?.ID
-                            this.onServiceFetch()
-                        }).catch(e => {
-                            ElMessage.error(e.message)
-                        })
-                    },
-                    onGroupEdit(record) {
-                        this.group.dialog.draft = {
-                            Name: new Date().toISOString().replace(/[-T:\.Z]/g, ""),
-                            Storage: "",
-                            PreRequestScript: "",
-                            ...this.group.record,
-                            Active: true,
-                        }
-                        ;["Storage"].forEach(n => this.group.dialog.draft[n] = JSON.stringify(JSON.parse(this.group.dialog.draft[n] || "{}"), undefined, 2))
-                        this.group.dialog.visible = true
-                    },
-                    onGroupDialogSubmit() {
-                        if (!this.group.dialog.draft.Name) {
-                            ElMessage.warning("Group name is required")
-                            return
-                        }
-                        fetch(`/service/mockd?type=group&id=${this.group.dialog.draft.ID ?? ""}`, {
-                            method: this.group.dialog.draft.ID ? "PUT" : "POST",
-                            body: JSON.stringify({
-                                ...this.group.dialog.draft,
-                                storage: JSON.stringify(JSON.parse(this.group.dialog.draft.Storage || "{}")),
-                            })
+                    fetch(method, table, params = "", data = undefined) {
+                        return fetch(`/service/mockd?t=${table}${params && "&" + params}`, {
+                            method,
+                            ...(data && { body: JSON.stringify(data) }),
                         }).then(r => {
-                            if (r.status !== 200) {
-                                throw new Error(r.statusText)
+                            if (r.status === 200) {
+                                return r.json()
                             }
-                            this.group.dialog.visible = false
-                            ElMessage.success("Save succeeded")
-                            this.onGroupFetch()
+                            throw new Error(r.statusText)
+
+                        }).then(r => {
+                            return r.data
                         }).catch(e => {
                             ElMessage.error(e.message)
+                            throw e
                         })
                     },
-                    onGroupDelete() {
-                        ElMessageBox.confirm(`Group will be deleted permanently. Continue ?`, "Warning", {
+
+                    onCollectionLoad() {
+                        return this.fetch("GET", "Collection").then(records => {
+                            this.collection.records = records
+                            if (!records.length) {
+                                this.service.records = []
+                                return
+                            }
+                            this.collection.ID = records.at(-1)?.ID
+                            this.onCollectionSelect()
+                        })
+                    },
+                    onCollectionImport(file) {
+                        const that = this,
+                            reader = new FileReader()
+                        reader.onload = function () {
+                            const { collection, services } = JSON.parse(this.result)
+                            delete(collection.ID)
+                            that.fetch("POST", "Collection", "", collection)
+                                .then(([CollectionID]) => {
+                                    return that.fetch("POST", "Service", "", services.map(i => {
+                                        delete(i.ID)
+                                        i.CollectionID = CollectionID
+                                        return i
+                                    }))
+                                })
+                                .then(() => {
+                                    that.onCollectionLoad()
+                                })
+                        }
+                        reader.readAsText(file.raw, "utf-8")
+                    },
+                    onCollectionExport() {
+                        const a = document.createElement("a")
+                        a.href = URL.createObjectURL(new Blob([JSON.stringify({
+                            collection: this.collection.records.find(i => i.ID === this.collection.ID),
+                            services: this.service.records,
+                        })], { type: "text/plain" }))
+                        a.download = Date.now() + ".json"
+                        a.click()
+                    },
+                    onCollectionDelete() {
+                        return ElMessageBox.confirm("Collection will be deleted permanently. Continue ?", "Warning", {
                             confirmButtonText: "Confirm",
                             type: "warning",
-                            beforeClose: (action, instance, done) => {
+                            beforeClose: async (action, instance, done) => {
                                 if (action === "confirm") {
                                     instance.confirmButtonLoading = true
                                     instance.confirmButtonText = "Delete..."
-                                    fetch(`/service/mockd?type=group&id=${this["proxy.group.id"]}`, {
-                                        method: "DELETE",
-                                    }).then(r => {
-                                        if (r.status !== 200) {
-                                            throw new Error(r.statusText)
-                                        }
-                                        this.service.selections = []
-                                        this.service.records = []
-                                        this.group.records = this.group.records.filter(i => i != this.group.record)
-                                        this["proxy.group.id"] = undefined
-                                        ElMessage.success("Delete succeeded")
-                                    }).catch(e => {
-                                        ElMessage.error(e.message)
-                                    }).finally(() => {
-                                        instance.confirmButtonLoading = false
-                                    })
+                                    const ID = this.service.records.map(i => i.ID)
+                                    if (ID.length) {
+                                        await this.fetch("DELETE", "Service", `ID=${ID.join(",")}`)
+                                    }
+                                    await this.fetch("DELETE", "Collection", `ID=${this.collection.ID}`)
+                                    await this.onCollectionLoad()
                                 }
                                 done()
                             },
-                        }).catch(() => { })
+                        })
                     },
-                    onGroupImport(file) {
-                        const that = this,
-                            reader = new FileReader()
-                        reader.onload = function () {
-                            const { $group, entries } = JSON.parse(this.result).log
-                            fetch("/service/mockd?type=group", {
-                                method: "POST",
-                                body: JSON.stringify($group ?? {
-                                    Name: Date.now() + "",
-                                    Active: true,
-                                    Storage: "",
-                                    PreRequestScript: "",
-                                }),
-                            }).then(r => {
-                                if (r.status !== 200) {
-                                    throw new Error(r.statusText)
+                    onCollectionDialogOpen(ID) {
+                        this.collection.dialog.draft = {
+                            Name: new Date().toISOString().replace(/[-T:\.Z]/g, ""),
+                            PreRequestScript: "",
+                            Variables: "{}",
+                            ...this.collection.records.find(i => i.ID === ID),
+                        }
+                        this.collection.dialog.visible = true
+                    },
+                    onCollectionDialogSubmit() {
+                        return Promise.resolve()
+                            .then(() => {
+                                if (this.collection.dialog.draft.ID) {
+                                    return this.fetch("PUT", "Collection", `ID=${this.collection.dialog.draft.ID}`, this.collection.dialog.draft)
                                 }
-                                return r.json()
-                            }).then(r => {
-                                return that.onServiceImport(undefined, undefined, entries, r.data)
-                            }).then(() => {
-                                that.onGroupFetch()
-                            }).catch(e => {
-                                ElMessage.error(e.message)
+                                return this.fetch("POST", "Collection", "", this.collection.dialog.draft)
                             })
-                        }
-                        reader.readAsText(file.raw, "utf-8")
+                            .then(() => {
+                                this.collection.dialog.visible = false
+                                this.onCollectionLoad()
+                            })
                     },
-                    onGroupExport() {
-                        if (!this.group.record) {
-                            return
-                        }
-                        const a = document.createElement("a")
-                        a.href = URL.createObjectURL(new Blob([JSON.stringify({
-                            log: {
-                                creator: { name: "mockd", version: "0.1" },
-                                $group: this.group.record,
-                                entries: this.service.records.map(i => {
-                                    return {
-                                        _resourceType: "xhr",
-                                        request: {
-                                            url: i.URL,
-                                        },
-                                        response: {
-                                            status: i.StatusCode,
-                                            headers: Object.entries(JSON.parse(i.Headers)).map(i => { return { name: i[0], value: i[1] } }),
-                                            content: {
-                                                text: i.Body,
-                                            },
-                                        },
-                                        time: i.Settings.time ?? 0,
-                                        $settings: i.Settings,
-                                        $preResponseScript: i.PreResponseScript,
-                                    }
-                                })
-                            }
-                        })], { type: "text/plain" }))
-                        a.download = Date.now() + ".har"
-                        a.click()
+                    onCollectionSelect() {
+                        return !this.collection.ID ? Promise.resolve() : this.fetch("GET", "Service", `CollectionID=${this.collection.ID}`).then(records => {
+                            this.service.records = records.map(i => {
+                                i.Active = !!i.Active
+                                return i
+                            })
+                        })
                     },
-                    onServiceFetch(group = this["proxy.group.id"]) {
-                        if (!group) {
-                            return
-                        }
-                        this.service.loading = true
-                        fetch(`/service/mockd?type=service&id=${group}`).then(r => {
-                            if (r.status !== 200) {
-                                throw new Error(r.statusText)
-                            }
-                            return r.json()
-                        }).then(({ data: services }) => {
-                            this.service.records = services.map(i => {
+
+                    onServiceImport(file) {
+                        const that = this,
+                            reader = new FileReader(),
+                            cache = this.service.records.filter(i => i.Active).reduce((p, c) => { p[c.RequestURL] = false; return p; }, {})
+                        reader.onload = function () {
+                            return that.fetch("POST", "Service", "", JSON.parse(this.result).log.entries.filter(i => i._resourceType === "xhr").map(i => {
+                                const RequestURL = i.request.url.replace(/^https?:\/\/[^\/]+/, "").replace(/\?.*$/, "")
                                 return {
-                                    ...i,
-                                    Active: !!i.Active,
-                                    Settings: JSON.parse(i.Settings),
+                                    CollectionID: that.collection.ID,
+                                    Active: cache[RequestURL] ?? !(cache[RequestURL] = false),
+                                    RequestMethod: i.request.method,
+                                    RequestURL,
+                                    ResponseCode: i.response.status,
+                                    ResponseHeaders: JSON.stringify(i.response.headers.reduce((p, c) => {
+                                        p[c.name] = c.value
+                                        return p
+                                    }, {})),
+                                    ResponseBody: i.response.content?.text ?? "",
+                                    PreResponseScript: "",
                                 }
-                            })
-                        }).catch(e => {
-                            ElMessage.error(e.message)
-                        }).finally(() => {
-                            this.service.loading = false
-                        })
-                    },
-                    onServiceImport(file, _, entries, group) {
-                        if (!file && !_ && entries && group) {
-                            const cache = this.service.records.filter(i => i.active).reduce((p, c) => { p[c.url] = false; return p; }, {})
-                            return fetch("/service/mockd?type=service", {
-                                method: "POST",
-                                body: JSON.stringify(entries.filter(i => i._resourceType === "xhr").map(i => {
-                                    const URL = i.request.url.replace(/^https?:\/\/[^\/]+/, "").replace(/\?.*$/, "")
-                                    return {
-                                        GroupId: group,
-                                        Active: cache[URL] ?? !(cache[URL] = false),
-                                        URL,
-                                        StatusCode: i.response.status,
-                                        Headers: JSON.stringify(i.response.headers.reduce((p, c) => {
-                                            p[c.name] = c.value
-                                            return p
-                                        }, {})),
-                                        Body: i.response.content?.text ?? "",
-                                        PreResponseScript: i.$preResponseScript ?? "",
-                                        Settings: JSON.stringify(i.$settings ?? "{}"),
-                                    }
-                                })),
-                            }).then(r => {
-                                if (r.status !== 200) {
-                                    throw new Error(r.statusText)
-                                }
-                            })
-                        }
-                        const that = this,
-                            reader = new FileReader()
-                        reader.onload = function () {
-                            that.onServiceImport(undefined, undefined, JSON.parse(this.result).log.entries, that.group.record.id)
-                                .then(r => that.onServiceFetch())
+                            })).then(r => that.onCollectionSelect())
                         }
                         reader.readAsText(file.raw, "utf-8")
                     },
-                    onServiceDelete(services) {
-                        fetch(`/service/mockd?type=service&id=${services.join(",")}`, {
-                            method: "DELETE",
-                        }).then(r => {
-                            if (r.status !== 200) {
-                                throw new Error(r.statusText)
-                            }
-                            this.onServiceFetch()
-                        }).catch(e => {
-                            ElMessage.error(e.message)
+                    onServiceDelete(...ID) {
+                        if (!ID.length) {
+                            return
+                        }
+                        ElMessageBox.confirm("Service will be deleted permanently. Continue ?", "Warning", {
+                            confirmButtonText: "Confirm",
+                            type: "warning",
+                            beforeClose: async (action, instance, done) => {
+                                if (action === "confirm") {
+                                    instance.confirmButtonLoading = true
+                                    instance.confirmButtonText = "Delete..."
+                                    await this.fetch("DELETE", "Service", `ID=${ID.join(",")}`)
+                                        .then(() => {
+                                            this.onCollectionSelect()
+                                        })
+                                }
+                                done()
+                            },
                         })
                     },
-                    onServiceEdit(record) {
+                    onServiceDialogOpen(ID) {
                         this.service.dialog.draft = {
-                            GroupId: this.group.record.ID,
-                            Active: true,
-                            URL: "",
-                            StatusCode: 200,
-                            Headers: JSON.stringify({
-                                "Content-Type":"application/json; charset=utf-8",
-                            }, undefined, 2),
-                            Body: "{}",
+                            CollectionID: this.collection.ID, Active: true,
+                            RequestMethod: "",
+                            RequestURL: "",
+                            ResponseCode: 200,
+                            ResponseHeaders: JSON.stringify({ "Content-Type":"application/json; charset=utf-8" }, undefined, 2),
+                            ResponseBody: "{}",
                             PreResponseScript: "",
-                            Settings: {
-                                name: "",
-                                time: 0,
-                            },
-                            ...record,
+                            ...this.service.records.find(i => i.ID === ID),
                         }
-                        ;["Headers", "Body"].forEach(n => {
-                            try {
-                                this.service.dialog.draft[n] = JSON.stringify(JSON.parse(this.service.dialog.draft[n] || "{}"), undefined, 2)
-                            } catch { }
-                        })
-                        this.service.dialog.record = record
                         this.service.dialog.visible = true
                     },
-                    onServiceActiveSwitch(record) {
-                        fetch(`/service/mockd?type=service&id=${record.ID}`, {
-                            method: "PUT",
-                            body: JSON.stringify({
-                                Active: record.Active,
-                            }),
-                        }).then(r => {
-                            if (r.status !== 200) {
-                                throw new Error(r.statusText)
-                            }    
-                            if (!record.Active) {
-                                return
-                            }
-                            this.service.records.filter(i => i != record && i.Active && i.URL === record.URL).forEach(i => {
-                                i.Active = false
-                                this.onServiceActiveSwitch(i)
+                    onServiceDialogSubmit() {
+                        return Promise.resolve()
+                            .then(() => {
+                                if (this.service.dialog.draft.ID) {
+                                    this.fetch("PUT", "Service", `ID=${this.service.dialog.draft.ID}`, this.service.dialog.draft)
+                                }
+                                return this.fetch("POST", "Service", "", this.service.dialog.draft)
                             })
-                        }).catch(e => {
-                            ElMessage.error(e.message)
-                        })
-                    },
-                    onServiceSelect(record) {
-                        this.service.highlights = this.service.records.filter(i => i.URL === record.URL)
-                    },
-                    onServiceClass({ row }) {
-                        let clz = ""
-                        if (!row.Active) {
-                            clz += " disabled"
-                        }
-                        if (this.service.highlights.includes(row)) {
-                            clz += " current-row"
-                        }
-                        return clz
+                            .then(() => {
+                                this.service.dialog.visible = false
+                                this.onCollectionSelect()
+                            })
                     },
                     onServiceDialogPreview() {
-                        if (!this.service.dialog.draft.URL) {
-                            return
-                        }
-                        window.open("/service/mockd?test&u=" + encodeURIComponent(this.service.dialog.draft.URL))
-                    },
-                    onServiceDialogSubmit() {
-                        if (!this.service.dialog.draft.URL) {
-                            ElMessage.warning("Service url is required")
-                            return
-                        }
-                        ;["Headers"].forEach(n => this.service.dialog.draft[n] = JSON.stringify(JSON.parse(this.service.dialog.draft[n] || "{}")))
-                        fetch(`/service/mockd?type=service&id=${this.service.dialog.draft.ID ?? ""}`, {
-                            method: this.service.dialog.draft.ID ? "PUT" : "POST",
-                            body: JSON.stringify({
-                                ...this.service.dialog.draft,
-                                Settings: JSON.stringify(this.service.dialog.draft.Settings),
-                            }),
-                        }).then(r => {
-                            if (r.status !== 200) {
-                                throw new Error(r.statusText)
-                            }
-                            this.service.dialog.visible = false
-                            this.onServiceFetch()
-                        }).catch(e => {
-                            ElMessage.error(e.message)
-                        })
+                        window.open(`/service/mockd/${this.service.dialog.draft.RequestURL.replace(/^\//, "")}`)
                     },
                 },
                 mounted() {
-                    this.onGroupFetch()
+                    this.onCollectionLoad()
                 },
                 components: {
                     "monaco-editor": {
@@ -780,7 +624,7 @@
                         props: {
                             modelValue: { type: String, default: "" },
                             width: { type: String, default: "100%" },
-                            height: { type: String, default: "180px" },
+                            height: { type: String, default: "100%" },
                             language: { type: String, default: "typescript" },
                             readOnly: { type: Boolean, default: false },
                         },
@@ -883,7 +727,7 @@
                                             value: props.modelValue,
                                         })
                                         if (props.language === "typescript") {
-                                            monaco.languages.typescript.typescriptDefaults.addExtraLib(`declare type MockResponse = { status: number; headers: any; body: any; }; declare const $: { request?: { body?: any; }; response: MockResponse; storage: any; mock: (url: string, requestBody: any) => MockResponse; };`, "global.ts")
+                                            monaco.languages.typescript.typescriptDefaults.addExtraLib(`declare const $: { request: { body?: any; }; response: { status: number; headers: any; body: any; }; variables: any; }`, "global.ts")
                                         }
                                         editor.onDidChangeModelContent(() => {
                                             emit("update:modelValue", editor.getValue())

@@ -147,7 +147,7 @@ export class MySQLHelper {
             case ColumnType.Datetime:
                 return "DATETIME"
             case ColumnType.Text:
-                return "TEXT"
+                return "MEDIUMTEXT"
             default:
                 throw new Error("unknown column type")
         }
@@ -168,7 +168,7 @@ export class MySQLHelper {
             }
         }
         return {
-            wheres: wheres.join(condition?.conjunction) || "1 = 1",
+            wheres: wheres.join(" " + condition?.conjunction + " ") || "1 = 1",
             params,
         }
     }
