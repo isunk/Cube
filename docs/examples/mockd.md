@@ -146,7 +146,7 @@
 
         constructor(method: string, requestBody: Buffer, params: any, name: string) {
             this.method = method
-            this.requestBody = params.b ?? this.requestBody?.toString()
+            this.requestBody = params.b ?? requestBody?.toString()
             this.name = (name || params.u)?.replace(/^\//, "")
             this.callback = params.c
         }
