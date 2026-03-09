@@ -29,6 +29,8 @@
                     }
                 default:
                     const mime = {
+                        "js": "text/javascript; charset=utf-8",
+                        "css": "text/css; charset=utf-8",
                         "svg": "image/svg+xml",
                     }[fileType]
                     return new ServiceResponse(200, {
