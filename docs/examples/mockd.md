@@ -458,7 +458,9 @@
                                 this.service.records = []
                                 return
                             }
-                            this.collection.ID = records.at(-1)?.ID
+                            if (!this.collection.ID) {
+                                this.collection.ID = records.at(0)?.ID
+                            }
                             this.onCollectionSelect()
                         })
                     },
