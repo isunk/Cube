@@ -119,10 +119,17 @@
         }
 
         public put(table: string, id: string, input: any) {
+            const record = helper.select(table, {
+                conditions: [{ field: "ID", operator: "=", value: id }],
+                conjunction: "AND",
+            }).map(i => i).pop()
+            if (!record) {
+                throw new Error("record not found")
+            }
             return helper.update(table, {
                 conditions: [{ field: "ID", operator: "=", value: id }],
                 conjunction: "AND",
-            }, input)
+            }, this.toPutData(input, record))
         }
 
         public get(table: string, params: { [name: string]: string }) {
@@ -132,6 +139,29 @@
                 }),
                 conjunction: "AND",
             }).map(i => i)
+        }
+
+        private toPutData(data, record) {
+            const merge = (a, [start, del, add, checksum]) => {
+                const b = a.slice(0, start) + add + a.slice(start + del)
+                let hash = 5381
+                for (let i = 0; i < b.length; i++) {
+                    hash = (hash << 5) + hash + b.charCodeAt(i)
+                }
+                if (checksum !== (hash >>> 0) % 65535) {
+                    throw new Error("check hash failed")
+                }
+                return b
+            }
+            return Object.fromEntries(
+                Object.entries(data)
+                    .map(([k, v]) => {
+                        if (["ResponseBody", "PreRequestScript"].includes(k) && Array.isArray(v) && v.length === 4) {
+                            return [k, merge(record[k], v as [any, any, any, any])]
+                        }
+                        return [k, v]
+                    })
+            )
         }
     }
 
@@ -442,13 +472,41 @@
                                 return r.json()
                             }
                             throw new Error(r.statusText)
-
+    
                         }).then(r => {
                             return r.data
                         }).catch(e => {
                             ElMessage.error(e.message)
                             throw e
                         })
+                    },
+                    toPutData(data, record) {
+                        const diff = (a, b) => {
+                            let start = 0,
+                                enda = a.length, endb = b.length
+                            while (start < enda && start < endb && a[start] === b[start]) {
+                                start++
+                            }
+                            while (enda < start && endb < start && a[enda - 1] === b[endb - 1]) {
+                                enda--
+                                endb--
+                            }
+                            let hash = 5381
+                            for (let i = 0; i < b.length; i++) {
+                                hash = (hash << 5) + hash + b.charCodeAt(i)
+                            }
+                            return [start, enda - start, b.slice(start, endb), (hash >>> 0) % 65535]
+                        }
+                        return Object.fromEntries(
+                            Object.entries(data)
+                                .filter(([k]) => ["ID"].includes(k) || data[k] !== record[k])
+                                .map(([k, v]) => {
+                                    if (["ResponseBody", "PreRequestScript"].includes(k)) {
+                                        return [k, diff(record[k], v)]
+                                    }
+                                    return [k, v]
+                                })
+                        )
                     },
 
                     onCollectionLoad() {
@@ -525,7 +583,7 @@
                         return Promise.resolve()
                             .then(() => {
                                 if (this.collection.dialog.draft.ID) {
-                                    return this.fetch("PUT", "Collection", `ID=${this.collection.dialog.draft.ID}`, this.collection.dialog.draft)
+                                    return this.fetch("PUT", "Collection", `ID=${this.collection.dialog.draft.ID}`, this.toPutData(this.collection.dialog.draft, this.collection.records.find(i => i.ID === this.collection.dialog.draft.ID) ?? {}))
                                 }
                                 return this.fetch("POST", "Collection", "", this.collection.dialog.draft)
                             })
@@ -604,7 +662,7 @@
                         return Promise.resolve()
                             .then(() => {
                                 if (this.service.dialog.draft.ID) {
-                                    return this.fetch("PUT", "Service", `ID=${this.service.dialog.draft.ID}`, this.service.dialog.draft)
+                                    return this.fetch("PUT", "Service", `ID=${this.service.dialog.draft.ID}`, this.toPutData(this.service.dialog.draft, this.service.records.find(i => i.ID === this.service.dialog.draft.ID) ?? {}))
                                 }
                                 return this.fetch("POST", "Service", "", this.service.dialog.draft)
                             })
@@ -729,7 +787,7 @@
                                             value: props.modelValue,
                                         })
                                         if (props.language === "typescript") {
-                                            monaco.languages.typescript.typescriptDefaults.addExtraLib(`declare const $: { request: { body?: any; }; response: { status: number; headers: any; body: any; }; variables: any; }`, "global.ts")
+                                            monaco.languages.typescript.typescriptDefaults.addExtraLib(`declare const $: { request: { body?: any; }; response: { status: number; headers: any; body: any; }; variables: any; [name: string]: any; }`, "global.ts")
                                         }
                                         editor.onDidChangeModelContent(() => {
                                             emit("update:modelValue", editor.getValue())
