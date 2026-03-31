@@ -436,10 +436,10 @@ export default function (ctx: ServiceContext): ServiceResponse | Uint8Array | an
         })
     switch (ctx.getMethod()) {
         case "GET":
-            if (params.id || params.keyword || params.from || params.size) {
-                return dyntab.get(params.id, params.keyword, params.from, params.size)
+            if (ctx.getHeader()["Accept"].includes("text/html")) {
+                return new ServiceResponse(200, { "Content-Type": "text/html" }, dyntab.render())
             }
-            return new ServiceResponse(200, { "Content-Type": "text/html" }, dyntab.render())
+            return dyntab.get(params.id, params.keyword, params.from, params.size)
         case "PUT":
             return dyntab.put(ctx.getBody().toJson())
         case "POST":
