@@ -134,7 +134,7 @@
 
         public get(table: string, params: { [name: string]: string }) {
             return helper.select(table, {
-                conditions: Object.entries({ "1": "1", ...params }).map(([field, value]) => {
+                conditions: Object.entries(params).map(([field, value]) => {
                     return { field, operator: "=", value }
                 }),
                 conjunction: "AND",
