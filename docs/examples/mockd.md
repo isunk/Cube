@@ -122,7 +122,7 @@
             const record = helper.select(table, {
                 conditions: [{ field: "ID", operator: "=", value: id }],
                 conjunction: "AND",
-            }).map(i => i).pop()
+            }).pop()
             if (!record) {
                 throw new Error("record not found")
             }
@@ -138,7 +138,7 @@
                     return { field, operator: "=", value }
                 }),
                 conjunction: "AND",
-            }).map(i => i)
+            })
         }
 
         private toPutData(data, record) {

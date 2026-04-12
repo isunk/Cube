@@ -49,7 +49,7 @@ func NewDatabaseClient(ctx Context) *DatabaseClient {
 	return &DatabaseClient{ctx}
 }
 
-func ExportDatabaseRows(rows *sql.Rows) ([]interface{}, error) {
+func ExportDatabaseRows(rows *sql.Rows) (*[]interface{}, error) {
 	defer rows.Close()
 
 	columns, _ := rows.Columns()
@@ -92,14 +92,14 @@ func ExportDatabaseRows(rows *sql.Rows) ([]interface{}, error) {
 		records = append(records, record)
 	}
 
-	return records, rows.Err()
+	return &records, rows.Err()
 }
 
 type DatabaseTransaction struct {
 	t *sql.Tx
 }
 
-func (d *DatabaseTransaction) Query(stmt string, params ...interface{}) ([]interface{}, error) {
+func (d *DatabaseTransaction) Query(stmt string, params ...interface{}) (*[]interface{}, error) {
 	rows, err := d.t.Query(stmt, params...)
 	if err != nil {
 		return nil, err
@@ -127,7 +127,7 @@ type DatabaseClient struct {
 	ctx Context
 }
 
-func (d *DatabaseClient) Query(stmt string, params ...interface{}) ([]interface{}, error) {
+func (d *DatabaseClient) Query(stmt string, params ...interface{}) (*[]interface{}, error) {
 	rows, err := d.ctx.Db.Query(stmt, params...)
 	if err != nil {
 		return nil, err
