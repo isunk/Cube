@@ -198,7 +198,7 @@
                 if (err.message === "service not found") {
                     status = 404
                 }
-                return this.callback ? new ServiceResponse(200, undefined, `mockc.callbacks["${this.callback}"](${JSON.stringify({ status, error: err.message })})`) : new ServiceResponse(status, undefined, { error: err.message })
+                return this.callback ? new ServiceResponse(200, undefined, `mockc.callbacks["${this.callback}"](${JSON.stringify({ status, error: err.message })})`) : new CorsServiceResponse(status, undefined, { error: err.message })
             }
         }
 
