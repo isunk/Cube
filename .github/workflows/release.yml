@@ -67,16 +67,10 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y upx
-      - name: Set up MinGW
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
       - name: Build
         run: |
-          export CGO_ENABLED=1 \
-              CC=aarch64-linux-gnu-gcc \
-              CXX=aarch64-linux-gnu-g++
-          export GOOS=linux \
+          export CGO_ENABLED=0 \
+              GOOS=android \
               GOARCH=arm64
           make build STATIC=1 && mv cube .out
       - name: Compress
