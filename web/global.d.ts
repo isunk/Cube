@@ -92,11 +92,11 @@ declare class Database {
     /**
      * create a database client
      * 
-     * @param type type, e.g. "sqlite3", "mysql"
-     * @param connection connection string, e.g. "mydb.db" for sqlite3, "username:password@tcp(127.0.0.1:3307)/dbname" for mysql
+     * @param type type, e.g. "sqlite", "mysql"
+     * @param connection connection string, e.g. "mydb.db" for sqlite, "username:password@tcp(127.0.0.1:3307)/dbname" for mysql
      * @return database client
      */
-    constructor(type: "sqlite3" | "mysql", connection: string);
+    constructor(type: "sqlite" | "mysql", connection: string);
     /**
      * begin a transaction
      *

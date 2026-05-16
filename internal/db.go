@@ -11,7 +11,7 @@ var Db *sql.DB
 func InitDb() {
 	var err error
 
-	Db, err = sql.Open("sqlite3", "./cube.db")
+	Db, err = sql.Open("sqlite", "./cube.db")
 	if err != nil {
 		panic(err)
 	}

@@ -174,7 +174,7 @@ export class MySQLHelper {
     }
 }
 
-export class Sqlite3Adpater extends MySQLHelper {    
+export class SqliteAdpater extends MySQLHelper {    
     protected onParseTableExtInfo() {
         return ""
     }

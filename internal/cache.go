@@ -87,8 +87,8 @@ func (s *CacheClient) GetRoute(path string) (string, map[string]string) {
 func (s *CacheClient) GetDbSource(dbType string, connection string) (db *sql.DB, err error) {
 	if db = s.DbSources[connection]; db == nil {
 		switch dbType {
-		case "sqlite3":
-			db, err = sql.Open("sqlite3", connection)
+		case "sqlite":
+			db, err = sql.Open("sqlite", connection)
 		case "mysql":
 			db, err = sql.Open("mysql", connection)
 		default:
