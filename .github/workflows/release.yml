@@ -47,7 +47,7 @@ jobs:
           overwrite: true
           file_glob: true
           body: ""
-  build-linux-arm64:
+  build-android-arm64:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -69,8 +69,7 @@ jobs:
           sudo apt-get install -y upx
       - name: Build
         run: |
-          export CGO_ENABLED=0 \
-              GOOS=android \
+          export GOOS=android \
               GOARCH=arm64
           make build STATIC=1 && mv cube .out
       - name: Compress
@@ -78,15 +77,15 @@ jobs:
           upx -9 -q -o cube .out
       - name: Package
         run: |
-          tar -zcvf cube-latest-linux-arm64.tar.gz cube docs README.md LICENSE
+          tar -zcvf cube-latest-android-arm64.tar.gz cube docs README.md LICENSE
       # - name: Checksum
       #   run: |
-      #     md5sum cube-latest-linux-arm64.tar.gz | cut -d ' ' -f 1 > cube-latest-linux-arm64.tar.gz.md5
+      #     md5sum cube-latest-android-arm64.tar.gz | cut -d ' ' -f 1 > cube-latest-android-arm64.tar.gz.md5
       - name: Upload
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: cube-latest-linux-arm64.tar.gz*
+          file: cube-latest-android-arm64.tar.gz*
           tag: latest
           release_name: latest
           overwrite: true
@@ -117,9 +116,6 @@ jobs:
           sudo apt-get install -y gcc-mingw-w64-x86-64
       - name: Build
         run: |
-          export CGO_ENABLED=1 \
-              CC=x86_64-w64-mingw32-gcc \
-              CXX=x86_64-w64-mingw32-g++
           export GOOS=windows \
               GOARCH=amd64
           make build && mv cube.exe .out

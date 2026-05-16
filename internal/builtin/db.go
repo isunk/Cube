@@ -10,7 +10,7 @@ import (
 
 	"github.com/dop251/goja"
 	_ "github.com/go-sql-driver/mysql"
-	_ "github.com/mattn/go-sqlite3"
+	_ "modernc.org/sqlite"
 )
 
 func init() {
