@@ -111,15 +111,15 @@ A simple web server that can be developed online using typescript/javascript.
     passwd root
 
     # Run sshd service
-    sshd -d -p 8022
+    sshd -p 8022
     ```
 
 2. Connect with ssh
     ```bash
-    # Copy file
+    # Copy cube to termux
     scp -P 8022 ./cube root@192.168.0.101:~/
 
-    # Connect with ssh
+    # Connect to termux
     ssh -p 8022 root@192.168.0.101
     ```
 
