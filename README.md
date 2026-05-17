@@ -103,24 +103,33 @@ A simple web server that can be developed online using typescript/javascript.
     chrome --enable-quic --origin-to-force-quic-on=127.0.0.1:8443 https://127.0.0.1:8443/
     ```
 
-### Run with termux
+### Run on termux
 
-1. Run sshd service in termux
+1. Enable sshd service on termux
     ```bash
-    # Set password for root
+    # Set root password
     passwd root
 
     # Run sshd service
     sshd -p 8022
     ```
 
-2. Connect with ssh
+2. Connect with ssh(e.g. IP 192.168.0.101)
     ```bash
     # Copy cube to termux
     scp -P 8022 ./cube root@192.168.0.101:~/
 
     # Connect to termux
-    ssh -p 8022 root@192.168.0.101
+    ssh -p 8022 root@192.168.0.101 << "EOF"
+    # Create and link cube.db
+    touch ~/storage/shared/cube.db && ln -s ~/storage/shared/cube.db ~/cube.db
+    # Link files
+    ln -s ~/storage/shared/Download ~/files
+    # Set execution permissions
+    chmod +x ~/cube
+    # Run
+    ./cube
+    EOF
     ```
 
 ## Examples
