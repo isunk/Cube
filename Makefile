@@ -1,5 +1,11 @@
 # Makefile 中命令需要转义字符 `$` -> `$$`、`'` -> `'\''`
 
+# 设置 UTF-8 编码格式
+export LANG=C.UTF-8
+
+# 获取 monaco-editor 版本号
+export MONACO_EDITOR_VERSION := $(shell grep -horP "monaco-editor/[\d\.]+" ./web | uniq | cut -d "/" -f 2)
+
 .ONESHELL: # target 中的每行命令使用同一个 shell，用于支持多行命令
 
 # 运行
@@ -21,17 +27,14 @@ bench: # 执行（基准）单元测试用例
 # 编译
 build: clean config # 默认不使用 CDN 资源、不使用 UPX 压缩、不使用静态链接编译，即 make build CDN=0 UPX=0 STATIC=0
 	@
-	# 是否使用静态编译
+	# Check whether to use static link compilation
 	if [ "$(STATIC)" = "1" ]; then
-		# 编译（移除可执行文件中的符号表、移除可执行文件中的调试信息、强制生成完全静态链接的可执行文件）
 		go build -ldflags "-s -w -extldflags=-static" .
 	else
-		# 编译（移除可执行文件中的符号表、移除可执行文件中的调试信息）
 		go build -ldflags "-s -w" .
 	fi
-	# 编译（删除符号、调试信息）
 	
-	# 是否使用 UPX 压缩
+	# Check whether to use UPX compression
 	if [ "$(UPX)" = "1" ]; then
 		if [ "$(shell uname)" = "Linux" ]; then
 			upx -9 -q -o cubemin cube
@@ -42,18 +45,14 @@ build: clean config # 默认不使用 CDN 资源、不使用 UPX 压缩、不使
 
 config:
 	@
-	# 脚本在遇到任何命令返回非零退出状态（即命令执行失败）时，立即退出整个脚本的执行
+	# Set exit on any command failure
 	set -e
-	# 设置 UTF-8 编码格式
-	export LANG=C.UTF-8
-	# 获取 monaco-editor 版本号
-	export version=`grep -horP "monaco-editor/[\d\.]+" ./web | uniq | cut -d "/" -f 2`
-	# 初始化资源
-	if [ "$(CDN)" = "1" ]; then # 使用 CDN 资源
-		sed -i "s#window.location.origin + \"/libs/monaco-editor/$$version/min/vs\"#\"/libs/monaco-editor/$$version/min/vs\"#g" web/editor.html # 由于这里的 URL 需要在 Service Worker 中动态获取，因此需要补充完整的域名
+	# Load resources from CDN
+	if [ "$(CDN)" = "1" ]; then # Use CDN resources
+		sed -i "s#window.location.origin + \"/libs/monaco-editor/$$MONACO_EDITOR_VERSION/min/vs\"#\"/libs/monaco-editor/$$MONACO_EDITOR_VERSION/min/vs\"#g" web/editor.html # 由于这里的 URL 需要在 Service Worker 中动态获取，因此需要补充完整的域名
 		sed -i 's#"/libs/#"https://cdn.bootcdn.net/ajax/libs/#g' web/*.html
-	else # 构建一个不依赖于 CDN 的版本，依赖的 js、css 等库文件将下载至本地 web/libs 目录下
-		# 下载基础 css、js 资源文件
+	else # Use local resources
+		# Download basic css, js, etc. resources
 		grep -hor "/libs/[^\"'\'''\'']*" ./web | grep -v "monaco-editor" | sort | uniq | while read uri
 		do
 			name=$${uri#/libs/}
@@ -66,12 +65,12 @@ config:
 			echo "Download failed."
 			exit 1
 		done
-		# 下载 monaco-editor 资源
-		if [ ! -d "./web/libs/monaco-editor/$$version/" ]; then
-			mkdir -p "./web/libs/monaco-editor/$$version/"
-			wget --tries=5 --timeout=30 --no-check-certificate "https://registry.npm.taobao.org/monaco-editor/-/monaco-editor-$$version.tgz" || (echo "Download failed." && exit 1)
-			tar -zxf "monaco-editor-$$version.tgz" -C "./web/libs/monaco-editor/$$version/" --strip-components 1 "package/min"
-			rm monaco-editor-$$version.tgz
+		# Download monaco-editor resources
+		if [ ! -d "./web/libs/monaco-editor/$$MONACO_EDITOR_VERSION/" ]; then
+			mkdir -p "./web/libs/monaco-editor/$$MONACO_EDITOR_VERSION/"
+			wget --tries=5 --timeout=30 --no-check-certificate "https://registry.npm.taobao.org/monaco-editor/-/monaco-editor-$$MONACO_EDITOR_VERSION.tgz" || (echo "Download failed." && exit 1)
+			tar -zxf "monaco-editor-$$MONACO_EDITOR_VERSION.tgz" -C "./web/libs/monaco-editor/$$MONACO_EDITOR_VERSION/" --strip-components 1 "package/min"
+			rm monaco-editor-$$MONACO_EDITOR_VERSION.tgz
 		fi
 	fi
 
@@ -90,15 +89,15 @@ wrk: # 性能压测
 
 fmt: # 格式化代码
 	@
-	# 格式化 .go 文件
+	# Format .go files
 	if command -v gofumpt >/dev/null 2>&1; then
-		gofumpt -l -w . # 优先使用 gofumpt 格式化代码，安装：go install mvdan.cc/gofumpt@latest
+		gofumpt -l -w . # Use gofumpt to format code, install: go install mvdan.cc/gofumpt@latest
 	else
 		find ./ -name "*.go" | xargs -I {} go fmt {}
 	fi
-	# 格式化 .md 文件（去除由空格组成的空行）
+	# Format .md files and remove empty lines
 	find -name "*.md" | xargs sed -i "s/^[[:space:]]*$$//g"
-	# 格式化 .md 文件，将所有 "\r\n" 替换为 "\r"
+	# Format .md files and replace "\r\n" with "\r"
 	find -name "*.md" | xargs sed -i "s/\r$$//g"
 
 vet: # 静态代码检查
