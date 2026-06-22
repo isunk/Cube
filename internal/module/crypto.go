@@ -6,6 +6,7 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/rsa"
@@ -20,7 +21,6 @@ import (
 	"github.com/emmansun/gmsm/sm2"
 	"github.com/emmansun/gmsm/sm3"
 	"github.com/emmansun/gmsm/sm4"
-	"github.com/emmansun/gmsm/smx509"
 )
 
 func init() {
@@ -513,38 +513,29 @@ func (c *CryptoSm2Client) GenerateKey() (*map[string]builtin.Buffer, error) {
 	if err != nil {
 		return nil, err
 	}
-	prvkey, err := smx509.MarshalSM2PrivateKey(privateKey)
-	if err != nil {
-		return nil, err
+	prvkey := privateKey.D.Bytes()
+	if len(prvkey) < 32 {
+		padded := make([]byte, 32)
+		copy(padded[32-len(prvkey):], prvkey)
+		prvkey = padded
 	}
-	pubkey, err := smx509.MarshalPKIXPublicKey(&privateKey.PublicKey)
-	if err != nil {
-		return nil, err
-	}
+	pubkey := elliptic.MarshalCompressed(sm2.P256(), privateKey.PublicKey.X, privateKey.PublicKey.Y)
 	return &map[string]builtin.Buffer{
-		"privateKey": pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: prvkey}),
-		"publicKey":  pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: pubkey}),
+		"privateKey": prvkey,
+		"publicKey":  pubkey,
 	}, nil
 }
 
 func (c *CryptoSm2Client) Encrypt(input []byte, key []byte) (builtin.Buffer, error) {
-	block, _ := pem.Decode(key)
-	if block == nil {
-		return nil, fmt.Errorf("public key is invalid")
-	}
-	publicKey, err := smx509.ParsePKIXPublicKey(block.Bytes)
+	publicKey, err := c.toPublicKey(key)
 	if err != nil {
 		return nil, err
 	}
-	return sm2.EncryptASN1(rand.Reader, publicKey.(*ecdsa.PublicKey), input)
+	return sm2.EncryptASN1(rand.Reader, publicKey, input)
 }
 
 func (c *CryptoSm2Client) Decrypt(input []byte, key []byte) (builtin.Buffer, error) {
-	block, _ := pem.Decode(key)
-	if block == nil {
-		return nil, fmt.Errorf("private key is invalid")
-	}
-	privateKey, err := smx509.ParseSM2PrivateKey(block.Bytes)
+	privateKey, err := c.toPrivateKey(key)
 	if err != nil {
 		return nil, err
 	}
@@ -552,11 +543,7 @@ func (c *CryptoSm2Client) Decrypt(input []byte, key []byte) (builtin.Buffer, err
 }
 
 func (c *CryptoSm2Client) Sign(input []byte, key []byte) (builtin.Buffer, error) {
-	block, _ := pem.Decode(key)
-	if block == nil {
-		return nil, fmt.Errorf("private key is invalid")
-	}
-	privateKey, err := smx509.ParseSM2PrivateKey(block.Bytes)
+	privateKey, err := c.toPrivateKey(key)
 	if err != nil {
 		return nil, err
 	}
@@ -564,18 +551,39 @@ func (c *CryptoSm2Client) Sign(input []byte, key []byte) (builtin.Buffer, error)
 }
 
 func (c *CryptoSm2Client) Verify(input []byte, sign []byte, key []byte) (bool, error) {
-	block, _ := pem.Decode(key)
-	if block == nil {
-		return false, fmt.Errorf("public key is invalid")
-	}
-	publicKey, err := smx509.ParsePKIXPublicKey(block.Bytes)
+	publicKey, err := c.toPublicKey(key)
 	if err != nil {
 		return false, err
 	}
-	if !sm2.VerifyASN1(publicKey.(*ecdsa.PublicKey), input, sign) {
+	if !sm2.VerifyASN1(publicKey, input, sign) {
 		return false, nil
 	}
 	return true, nil
+}
+
+func (c *CryptoSm2Client) toPrivateKey(key []byte) (*sm2.PrivateKey, error) {
+	if len(key) != 32 {
+		return nil, fmt.Errorf("private key must be 32 bytes")
+	}
+	return sm2.NewPrivateKey(key)
+}
+
+func (c *CryptoSm2Client) toPublicKey(key []byte) (*ecdsa.PublicKey, error) {
+	if len(key) == 33 {
+		x, y := elliptic.UnmarshalCompressed(sm2.P256(), key)
+		if x == nil {
+			return nil, fmt.Errorf("invalid compressed public key")
+		}
+		return &ecdsa.PublicKey{
+			Curve: sm2.P256(),
+			X:     x,
+			Y:     y,
+		}, nil
+	}
+	if len(key) == 65 {
+		return sm2.ParseUncompressedPublicKey(key)
+	}
+	return nil, fmt.Errorf("public key must be 33 bytes(compressed) or 65 bytes(uncompressed)")
 }
 
 //#endregion

@@ -415,14 +415,14 @@ declare function $native(name: "crypto"): {
         /**
          * generate SM2 key pair
          * 
-         * @return key pair with private key(SEC1) and public key(PKIX)
+         * @return key pair with private key(32 bytes raw) and public key(33 bytes compressed)
          */
         generateKey(): { privateKey: Buffer; publicKey: Buffer; };
         /**
          * encrypt input data with public key
          * 
          * @param input input data
-         * @param publicKey public key(PKIX)
+         * @param publicKey public key(33 bytes compressed or 65 bytes uncompressed)
          * @return encrypted data
          */
         encrypt(input: GenericByteArray, publicKey: GenericByteArray): Buffer;
@@ -430,7 +430,7 @@ declare function $native(name: "crypto"): {
          * decrypt input data with private key
          * 
          * @param input input data
-         * @param privateKey private key(SEC1)
+         * @param privateKey private key(32 bytes raw)
          * @return decrypted data
          */
         decrypt(input: GenericByteArray, privateKey: GenericByteArray): Buffer;
@@ -438,7 +438,7 @@ declare function $native(name: "crypto"): {
          * sign input data with private key
          * 
          * @param input input data
-         * @param privateKey private key(SEC1)
+         * @param privateKey private key(32 bytes raw)
          * @return signature
          */
         sign(input: GenericByteArray, privateKey: GenericByteArray): Buffer;
@@ -447,7 +447,7 @@ declare function $native(name: "crypto"): {
          * 
          * @param input input data
          * @param sign signature
-         * @param publicKey public key(PKIX)
+         * @param publicKey public key(33 bytes compressed or 65 bytes uncompressed)
          * @return whether the signature is valid
          */
         verify(input: GenericByteArray, sign: GenericByteArray, publicKey: GenericByteArray): boolean;
