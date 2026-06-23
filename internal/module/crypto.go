@@ -14,6 +14,7 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
+	"math/big"
 	"strings"
 
 	"cube/internal/builtin"
@@ -526,39 +527,117 @@ func (c *CryptoSm2Client) GenerateKey() (*map[string]builtin.Buffer, error) {
 	}, nil
 }
 
-func (c *CryptoSm2Client) Encrypt(input []byte, key []byte) (builtin.Buffer, error) {
+func (c *CryptoSm2Client) Encrypt(input []byte, key []byte, options map[string]interface{}) (builtin.Buffer, error) {
 	publicKey, err := c.toPublicKey(key)
 	if err != nil {
 		return nil, err
 	}
-	return sm2.EncryptASN1(rand.Reader, publicKey, input)
+
+	encoding, _ := read[string](options, "encoding", "c1c3c2")
+	switch strings.ToLower(encoding) {
+	case "asn1":
+		return sm2.EncryptASN1(rand.Reader, publicKey, input)
+	case "c1c2c3":
+		return sm2.Encrypt(rand.Reader, publicKey, input, sm2.NewPlainEncrypterOpts(sm2.MarshalUncompressed, sm2.C1C2C3))
+	default:
+		return sm2.Encrypt(rand.Reader, publicKey, input, sm2.NewPlainEncrypterOpts(sm2.MarshalUncompressed, sm2.C1C3C2))
+	}
 }
 
-func (c *CryptoSm2Client) Decrypt(input []byte, key []byte) (builtin.Buffer, error) {
+func (c *CryptoSm2Client) Decrypt(input []byte, key []byte, options map[string]interface{}) (builtin.Buffer, error) {
 	privateKey, err := c.toPrivateKey(key)
 	if err != nil {
 		return nil, err
 	}
-	return sm2.Decrypt(privateKey, input)
+
+	encoding, _ := read[string](options, "encoding", "c1c3c2")
+	encoding = strings.ToLower(encoding)
+
+	if encoding == "asn1" {
+		return privateKey.Decrypt(rand.Reader, input, nil)
+	}
+
+	// 确保 C1 点有 0x04 前缀（部分实现不带前缀）
+	if len(input) > 0 && input[0] != 0x04 && input[0] != 0x02 && input[0] != 0x03 {
+		prefixed := make([]byte, len(input)+1)
+		prefixed[0] = 0x04
+		copy(prefixed[1:], input)
+		input = prefixed
+	}
+	if encoding == "c1c2c3" {
+		return privateKey.Decrypt(rand.Reader, input, sm2.NewPlainDecrypterOpts(sm2.C1C2C3))
+	}
+	return privateKey.Decrypt(rand.Reader, input, sm2.NewPlainDecrypterOpts(sm2.C1C3C2))
 }
 
-func (c *CryptoSm2Client) Sign(input []byte, key []byte) (builtin.Buffer, error) {
+func (c *CryptoSm2Client) Sign(input []byte, key []byte, options map[string]interface{}) (builtin.Buffer, error) {
 	privateKey, err := c.toPrivateKey(key)
 	if err != nil {
 		return nil, err
 	}
-	return sm2.SignASN1(rand.Reader, privateKey, input, &sm2.SM2SignerOption{})
+
+	format, _ := read[string](options, "format", "raw")
+
+	hash, _ := read[string](options, "hash", "none")
+	uid, _ := read[[]byte](options, "uid", []byte("1234567812345678"))
+
+	if strings.ToLower(format) == "asn1" {
+		if strings.ToLower(hash) == "sm3" {
+			return sm2.SignASN1(rand.Reader, privateKey, input, sm2.NewSM2SignerOption(true, uid))
+		}
+		return sm2.SignASN1(rand.Reader, privateKey, input, crypto.Hash(0))
+	}
+
+	var r, s *big.Int
+	if strings.ToLower(hash) == "sm3" {
+		r, s, err = sm2.SignWithSM2(rand.Reader, &privateKey.PrivateKey, uid, input)
+	} else {
+		r, s, err = sm2.Sign(rand.Reader, &privateKey.PrivateKey, input)
+	}
+	if err != nil {
+		return nil, err
+	}
+	rbytes, sbytes := r.Bytes(), s.Bytes()
+	if len(rbytes) < 32 {
+		padded := make([]byte, 32)
+		copy(padded[32-len(rbytes):], rbytes)
+		rbytes = padded
+	}
+	if len(sbytes) < 32 {
+		padded := make([]byte, 32)
+		copy(padded[32-len(sbytes):], sbytes)
+		sbytes = padded
+	}
+	return append(rbytes, sbytes...), nil
 }
 
-func (c *CryptoSm2Client) Verify(input []byte, sign []byte, key []byte) (bool, error) {
+func (c *CryptoSm2Client) Verify(input []byte, sign []byte, key []byte, options map[string]interface{}) (bool, error) {
 	publicKey, err := c.toPublicKey(key)
 	if err != nil {
 		return false, err
 	}
-	if !sm2.VerifyASN1(publicKey, input, sign) {
-		return false, nil
+
+	format, _ := read[string](options, "format", "raw")
+
+	hash, _ := read[string](options, "hash", "none")
+	uid, _ := read[[]byte](options, "uid", []byte("1234567812345678"))
+
+	if strings.ToLower(format) == "asn1" {
+		if strings.ToLower(hash) == "sm3" {
+			return sm2.VerifyASN1WithSM2(publicKey, uid, input, sign), nil
+		}
+		return sm2.VerifyASN1(publicKey, input, sign), nil
 	}
-	return true, nil
+
+	if len(sign) != 64 {
+		return false, fmt.Errorf("raw signature must be 64 bytes")
+	}
+	r := new(big.Int).SetBytes(sign[:32])
+	s := new(big.Int).SetBytes(sign[32:])
+	if strings.ToLower(hash) == "sm3" {
+		return sm2.VerifyWithSM2(publicKey, uid, input, r, s), nil
+	}
+	return sm2.Verify(publicKey, input, r, s), nil
 }
 
 func (c *CryptoSm2Client) toPrivateKey(key []byte) (*sm2.PrivateKey, error) {

@@ -2,6 +2,7 @@ package module
 
 import (
 	"bytes"
+	"encoding/hex"
 	"testing"
 )
 
@@ -250,13 +251,13 @@ func TestRsa(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	prvkey, pubkey := (*keys)["privateKey"], (*keys)["publicKey"]
 
-	a, err := client.Encrypt(input, (*keys)["publicKey"], "pkcs1")
+	a, err := client.Encrypt(input, pubkey, "pkcs1")
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	b, err := client.Decrypt(a, (*keys)["privateKey"], "pkcs1")
+	b, err := client.Decrypt(a, prvkey, "pkcs1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -264,12 +265,12 @@ func TestRsa(t *testing.T) {
 		t.Fatal("unexpected decryption")
 	}
 
-	c, err := client.Sign(input, (*keys)["privateKey"], "sha256", "pkcs1")
+	c, err := client.Sign(input, prvkey, "sha256", "pkcs1")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	d, err := client.Verify(input, c, (*keys)["publicKey"], "sha256", "pkcs1")
+	d, err := client.Verify(input, c, pubkey, "sha256", "pkcs1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -283,34 +284,77 @@ func TestSm2(t *testing.T) {
 
 	client := (&CryptoClient{}).CreateSm2()
 
-	keys, err := client.GenerateKey()
-	if err != nil {
-		t.Fatal(err)
+	{
+		keys, err := client.GenerateKey()
+		if err != nil {
+			t.Fatal(err)
+		}
+		prvkey, pubkey := (*keys)["privateKey"], (*keys)["publicKey"]
+
+		a, err := client.Encrypt(input, pubkey, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		b, err := client.Decrypt(a, prvkey, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(b, input) {
+			t.Fatal("unexpected decryption")
+		}
 	}
 
-	a, err := client.Encrypt(input, (*keys)["publicKey"])
-	if err != nil {
-		t.Fatal(err)
-	}
+	{
+		prvkey, _ := hex.DecodeString("49601eb539c8e72dd31a2e19622a8e4e70b7879f35eb5d37cf08aac7a7996220")
+		pubkey, _ := hex.DecodeString("04b4b578c390043086d3039f910c8718e3ee6525bfec083563ee1784b7a9d849b168470ec465f0c5b8827f60d1b78e68d33b884fcc2294ae408911c48c35d2510e")
 
-	b, err := client.Decrypt(a, (*keys)["privateKey"])
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(b, input) {
-		t.Fatal("unexpected decryption")
-	}
+		{
+			// 解密（C1C2C3）
+			a, _ := hex.DecodeString("8fe38c33f0ece39e55740ae822657fb3b058eba67ca2e44f2bd87d3876e67ee5780bd1ab5ebd06f06b7bfecf930ae59aafb1e78ae776c2946dc0b9d17a50aef6813674dd756ffbd324040b9f5f31f907650c2eb0f1711ef7cf7f1e84c4255763f43687c01530c11240f02fc2")
+			b, err := client.Decrypt(a, prvkey, map[string]interface{}{"encoding": "c1c2c3"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(b, input) {
+				t.Fatal("unexpected decryption")
+			}
+		}
 
-	c, err := client.Sign(input, (*keys)["privateKey"])
-	if err != nil {
-		t.Fatal(err)
-	}
+		{
+			// 解密（C1C3C2）
+			a, _ := hex.DecodeString("347641bb934912e8fe68ac4d0a1e69c16aa206c9547a47042c7c2d36222723ab6ad53f48b3c820f405b00a4f0be2a9b57e2d847be6d6e6fbd92d05b308c1262c6479c866f6508730764cb1822f17061fe47a5bfe2b5e714ba51ca78dafe6b86f2ef1c892eed8c6496da359b9")
+			b, err := client.Decrypt(a, prvkey, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(b, input) {
+				t.Fatal("unexpected decryption")
+			}
+		}
 
-	d, err := client.Verify(input, c, (*keys)["publicKey"])
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !d {
-		t.Fatal("unexpected verify")
+		{
+			// 验签（默认 Raw，无杂凑）
+			c, _ := hex.DecodeString("1f09fcfe63aaf0c5bfe73fdb9209ea570c0e69b3e5d68a2428447430060ec48da457dc21d0d81731fea8570d2715b16f83a16f8dd7aa3b91c2447d8592dd12be")
+			d, err := client.Verify(input, c, pubkey, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !d {
+				t.Fatal("unexpected verify")
+			}
+		}
+
+		{
+			// 验签（ASN1 编码 + SM3 杂凑 & UID=0123456789012345）
+			c, _ := hex.DecodeString("304602210082e779ea88fb411d395975f57b7fad985c64c95f78eaa1088e0eb70e9d06e40e022100b78642f810f011340252833beb5c882d18e7997be59b8e9453065a69e7d2aebc")
+			d, err := client.Verify(input, c, pubkey, map[string]interface{}{"format": "asn1", "hash": "sm3", "uid": []byte("0123456789012345")})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !d {
+				t.Fatal("unexpected verify")
+			}
+		}
 	}
 }

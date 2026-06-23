@@ -423,34 +423,46 @@ declare function $native(name: "crypto"): {
          * 
          * @param input input data
          * @param publicKey public key(33 bytes compressed or 65 bytes uncompressed)
+         * @param options optional parameters
+         * @param options.encoding ciphertext encoding, "c1c3c2"(default), "c1c2c3", or "asn1"
          * @return encrypted data
          */
-        encrypt(input: GenericByteArray, publicKey: GenericByteArray): Buffer;
+        encrypt(input: GenericByteArray, publicKey: GenericByteArray, options?: { encoding?: "c1c3c2" | "c1c2c3" | "asn1" }): Buffer;
         /**
          * decrypt input data with private key
          * 
          * @param input input data
          * @param privateKey private key(32 bytes raw)
+         * @param options optional parameters
+         * @param options.encoding ciphertext encoding, "c1c3c2"(default), "c1c2c3", or "asn1"
          * @return decrypted data
          */
-        decrypt(input: GenericByteArray, privateKey: GenericByteArray): Buffer;
+        decrypt(input: GenericByteArray, privateKey: GenericByteArray, options?: { encoding?: "c1c3c2" | "c1c2c3" | "asn1" }): Buffer;
         /**
          * sign input data with private key
          * 
          * @param input input data
          * @param privateKey private key(32 bytes raw)
+         * @param options optional parameters
+         * @param options.format signature format, "raw"(default) or "asn1"
+         * @param options.hash hash algorithm, "none"(default) or "sm3"
+         * @param options.uid user ID for SM2 signing, only used when hash is "sm3", default is "1234567812345678"
          * @return signature
          */
-        sign(input: GenericByteArray, privateKey: GenericByteArray): Buffer;
+        sign(input: GenericByteArray, privateKey: GenericByteArray, options?: { format?: "raw" | "asn1"; hash?: "none" | "sm3"; uid?: GenericByteArray }): Buffer;
         /**
          * verify signature with public key
          * 
          * @param input input data
          * @param sign signature
          * @param publicKey public key(33 bytes compressed or 65 bytes uncompressed)
+         * @param options optional parameters
+         * @param options.format signature format, "raw"(default) or "asn1"
+         * @param options.hash hash algorithm, "none"(default) or "sm3"
+         * @param options.uid user ID for SM2 verification, only used when hash is "sm3", default is "1234567812345678"
          * @return whether the signature is valid
          */
-        verify(input: GenericByteArray, sign: GenericByteArray, publicKey: GenericByteArray): boolean;
+        verify(input: GenericByteArray, sign: GenericByteArray, publicKey: GenericByteArray, options?: { format?: "raw" | "asn1"; hash?: "none" | "sm3"; uid?: GenericByteArray }): boolean;
     };
 }
 
