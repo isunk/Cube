@@ -211,8 +211,7 @@ func (c *AesGcmCipherClient) Encrypt(input []byte, key []byte, options map[strin
 		return nil, fmt.Errorf("nonce length must be %d bytes, got %d", gcm.NonceSize(), len(nonce))
 	}
 
-	output := gcm.Seal(nil, nonce, input, nil)
-	return output, nil
+	return gcm.Seal(nil, nonce, input, nil), nil
 }
 
 func (c *AesGcmCipherClient) Decrypt(input []byte, key []byte, options map[string]interface{}) (builtin.Buffer, error) {

@@ -309,7 +309,7 @@ declare function $native(name: "crypto"): {
          * 
          * @param input input data
          * @param key encryption key
-         * @param options options with padding and iv (cbc mode only) and nonce (gcm mode only)
+         * @param options options with padding(ecb、cbc) and iv(cbc) and nonce(gcm)
          * @return encrypted data
          */
         encrypt(input: GenericByteArray, key: GenericByteArray, options?: CipherOptions): Buffer;
@@ -318,7 +318,7 @@ declare function $native(name: "crypto"): {
          * 
          * @param input input data
          * @param key decryption key
-         * @param options options with padding and iv (cbc mode only) and nonce (gcm mode only)
+         * @param options options with padding(ecb、cbc) and iv(cbc) and nonce(gcm)
          * @return decrypted data
          */
         decrypt(input: GenericByteArray, key: GenericByteArray, options?: CipherOptions): Buffer;
