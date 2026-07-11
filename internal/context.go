@@ -146,7 +146,7 @@ func (s *ServiceContext) GetReader() *ServiceContextReader {
 func (s *ServiceContext) GetPusher() (http.Pusher, error) {
 	pusher, ok := s.responseWriter.(http.Pusher)
 	if !ok {
-		return nil, errors.New("server side push is not supported")
+		return nil, errors.New("server-side push is not supported")
 	}
 	return pusher, nil
 }
@@ -158,7 +158,7 @@ func (s *ServiceContext) Write(data []byte) (int, error) {
 func (s *ServiceContext) Flush() error {
 	flusher, ok := s.responseWriter.(http.Flusher)
 	if !ok {
-		return errors.New("failed to get a http flusher")
+		return errors.New("failed to get an http flusher")
 	}
 	if !s.returnless {
 		s.returnless = true

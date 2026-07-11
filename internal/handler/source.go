@@ -85,7 +85,7 @@ func handleSourcePost(r *http.Request) error {
 			return err
 		}
 		if count > 0 {
-			return errors.New("url already existed")
+			return errors.New("url already exists")
 		}
 	}
 	// 校验 cron 表达式
@@ -98,7 +98,7 @@ func handleSourcePost(r *http.Request) error {
 	{
 		var count int
 		if internal.Db.QueryRow("select count(1) from source where name = ? and type = ?", source.Name, source.Type).Scan(&count); count > 0 {
-			return errors.New("source already existed")
+			return errors.New("source already exists")
 		}
 	}
 
@@ -117,7 +117,7 @@ func handleSourceBulkPost(r *http.Request) error {
 		return err
 	}
 	if len(sources) == 0 {
-		return errors.New("nothing added or modified")
+			return errors.New("nothing was added or modified")
 	}
 
 	// 批量新增或修改
@@ -161,7 +161,7 @@ func handleSourceDelete(r *http.Request) error {
 		return err
 	}
 	if count, _ := res.RowsAffected(); count == 0 {
-		return errors.New("source does not existed")
+			return errors.New("source does not exist")
 	}
 
 	// 删除路由

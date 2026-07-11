@@ -71,7 +71,7 @@ func init() {
 			// 设置是否启用 HTTP/3
 			if options.IsHttp3 {
 				if options.Proxy != "" { // 暂不支持同时启用 HTTP/3 和配置代理
-					return nil, errors.New("can not enable http3 and set proxy at the same time")
+					return nil, errors.New("cannot enable http3 and set proxy at the same time")
 				}
 				httpc.c.Transport = &http3.RoundTripper{
 					TLSClientConfig: cc,

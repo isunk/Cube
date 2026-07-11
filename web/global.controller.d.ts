@@ -1,11 +1,11 @@
 //#region service
 
 interface ServiceContext {
-    "Native Service Context"; /* it is not allowed to create it by yourself */
+    "Native Service Context"; /* do not instantiate directly */
     /**
-     * get request header
+     * get request headers
      * 
-     * @return header object
+     * @return headers object
      */
     getHeader(): { [name: string]: string; };
     /**
@@ -65,19 +65,19 @@ interface ServiceContext {
      */
     upgradeToWebSocket(): WebSocket;
     /**
-     * get reader to read request body in stream mode
+     * get reader for reading request body in streaming mode
      * 
      * @return reader object with readByte and read methods
      */
     getReader(): { readByte(): number; read(count: number): Buffer; };
     /**
-     * get pusher to push data in stream mode
+     * get pusher for writing response body in streaming mode
      * 
      * @return pusher object with push method
      */
     getPusher(): { push(target: string, options: any): void; };
     /**
-     * write data to response body in stream mode
+     * write data to the response body in streaming mode
      * 
      * @param data data
      * @return number of bytes written
@@ -122,8 +122,8 @@ declare class ServiceResponse {
     /**
      * set response header
      * 
-     * @param name name
-     * @param value value
+     * @param name header name
+     * @param value header value
      * @return void
      */
     setHeader(name: string, value: string): void;
@@ -137,8 +137,8 @@ declare class ServiceResponse {
     /**
      * set cookie
      * 
-     * @param name name
-     * @param value value
+     * @param name cookie name
+     * @param value cookie value
      * @return void
      */
     setCookie(name: string, value: string): void;

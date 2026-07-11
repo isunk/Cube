@@ -220,7 +220,7 @@ func NewWorker(program *goja.Program, id int) *Worker {
 		if ok {
 			return factory(ctx), nil
 		}
-		return nil, errors.New("module is not found: " + name)
+		return nil, errors.New("module not found: " + name)
 	})
 
 	for _, factory := range builtin.Factories {

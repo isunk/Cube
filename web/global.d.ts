@@ -4,7 +4,7 @@ type GenericByteArray = string | Uint8Array | Array<number> | Buffer
 
 declare interface Buffer extends Array<number> {
     /**
-     * parse buffer to string
+     * convert buffer to string
      * 
      * @param encoding encoding
      * @return string
@@ -19,10 +19,10 @@ declare interface Buffer extends Array<number> {
 }
 declare interface BufferConstructor {
     /**
-     * parse input to buffer
+     * convert input to buffer
      * 
      * @param input input data
-     * @param encoding encoding if input is string
+     * @param encoding encoding of the input string
      * @return buffer object
      */
     from(input: GenericByteArray, encoding?: "utf8" | "hex" | "base64" | "base64url"): Buffer;
@@ -40,19 +40,19 @@ declare var console: Console;
 
 interface Date {
     /**
-     * parse date to string
+     * convert date to string
      * 
-     * @param layout date layout, e.g. "yyyy-MM-dd HH:mm:ss.SSS"
+     * @param layout date format string, e.g. "yyyy-MM-dd HH:mm:ss.SSS"
      * @return date string
      */
     toString(layout?: string): string
 }
 interface DateConstructor {
     /**
-     * parse string to date
+     * convert string to date
      * 
      * @param value date string
-     * @param layout date layout, e.g. "yyyy-MM-dd HH:mm:ss.SSS"
+     * @param layout date format string, e.g. "yyyy-MM-dd HH:mm:ss.SSS"
      * @return date object
      */
     toDate(value: string, layout: string): Date
@@ -184,11 +184,11 @@ declare function setTimeout(handler: Function, timeout?: number, ...arguments: a
 declare function clearTimeout(id: TimeoutId): void;
 
 /**
- * fetch url with options
+ * fetch URL with options
  * 
- * @param url url
+ * @param url target URL
  * @param options options with method, headers and body
- * @return promise of response with status, headers and methods to get buffer, json and text
+ * @return promise resolving to response with status, headers and methods to get buffer, json and text
  */
 declare function fetch(url: string, options?: { method?: "GET" | "POST" | "PUT" | "DELETE"; headers?: { [name: string]: string }; body?: string; }): Promise<{ status: number; headers: { [name: string]: string }; buffer(): Buffer; json(): any; text(): string; }>;
 
@@ -611,32 +611,32 @@ declare function $native(name: "file"): {
 
 type HttpOptions = Partial<{
     /**
-     * ca cert for https request
+     * CA certificate for HTTPS requests
      */
     caCert: string;
     /**
-     * proxy url for http request
+     * proxy URL for HTTP requests
      */
     proxy: string;
     /**
-     * whether to skip insecure verify for https request
+     * whether to skip TLS certificate verification
      */
     isSkipInsecureVerify: boolean;
     /**
-     * whether to use http3 for http request
+     * whether to use HTTP/3
      */
     isHttp3: boolean;
     /**
-     * whether to not follow redirect for http request
+     * whether to disable automatic redirects
      */
     isNotFollowRedirect: boolean;
 }> | {
     /**
-     * client cert for https request
+     * client certificate for HTTPS requests
      */
     cert: string;
     /**
-     * client key for https request
+     * client key for HTTPS requests
      */
     key: string;
 }
@@ -694,14 +694,14 @@ type Image = {
      */
     set(x: number, y: number, rgba: [number, number, number, number]): void;
     /**
-     * set rotation for next drawings
+     * set rotation for subsequent draw operations
      * 
      * @param degrees rotation degrees
      * @return void
      */
     setDrawRotate(degrees: number): void;
     /**
-     * set font face for next drawings
+     * set font face for subsequent draw operations
      * 
      * @param fontSize font size
      * @param ttf true type font data
@@ -709,7 +709,7 @@ type Image = {
      */
     setDrawFontFace(fontSize?: number, ttf?: GenericByteArray): void;
     /**
-     * set color for next drawings
+     * set color for subsequent draw operations
      * 
      * @param color color string like "#RRGGBB" or "#RRGGBBAA", or RGBA array
      * @return void
@@ -876,50 +876,50 @@ type UDPSocketConnection = {
 declare function $native(name: "socket"): {
     (protocol: "tcp"): {
         /**
-         * dial to a tcp server
+         * dial a TCP server
          * 
          * @param host host
          * @param port port
-         * @return tcp socket connection
+         * @return TCP socket connection
          */
         dial(host: string, port: number): TCPSocketConnection;
         /**
-         * listen on a tcp port
+         * listen on a TCP port
          * 
          * @param port port
          * @return listener with accept method
          */
         listen(port: number): {
             /**
-             * accept a tcp connection
+             * accept a TCP connection
              * 
-             * @return tcp socket connection
+             * @return TCP socket connection
              */
             accept(): TCPSocketConnection;
         };
     };
     (protocol: "udp"): {
         /**
-         * dial to a udp server
+         * dial a UDP server
          * 
          * @param host host
          * @param port port
-         * @return udp socket connection
+         * @return UDP socket connection
          */
         dial(host: string, port: number): UDPSocketConnection;
         /**
-         * listen on a udp port
+         * listen on a UDP port
          * 
          * @param port port
-         * @return udp socket connection
+         * @return UDP socket connection
          */
         listen(port: number): UDPSocketConnection;
         /**
-         * listen on a udp multicast address
+         * listen on a UDP multicast address
          * 
          * @param host host
          * @param port port
-         * @return udp socket connection
+         * @return UDP socket connection
          */
         listenMulticast(host: string, port: number): UDPSocketConnection;
     };

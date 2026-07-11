@@ -23,7 +23,7 @@ type FileClient struct{}
 func (f *FileClient) getPath(name string) (string, error) {
 	fp := path.Clean("files/" + name)
 	if !strings.HasPrefix(fp+"/", "files/") {
-		return "", errors.New("permission denial")
+		return "", errors.New("permission denied")
 	}
 	return fp, nil
 }

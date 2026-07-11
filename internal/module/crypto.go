@@ -661,7 +661,7 @@ func (c *CryptoSm2Client) toPublicKey(key []byte) (*ecdsa.PublicKey, error) {
 	if len(key) == 65 {
 		return sm2.ParseUncompressedPublicKey(key)
 	}
-	return nil, fmt.Errorf("public key must be 33 bytes(compressed) or 65 bytes(uncompressed)")
+	return nil, fmt.Errorf("public key must be 33 bytes (compressed) or 65 bytes (uncompressed)")
 }
 
 //#endregion
