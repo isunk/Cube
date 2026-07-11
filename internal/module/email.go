@@ -32,7 +32,8 @@ func (e *EmailClient) Send(receivers []string, subject string, content string, a
 	Name        string
 	ContentType string
 	Base64      string
-}) error {
+},
+) error {
 	address := net.JoinHostPort(e.host, strconv.Itoa(e.port))
 	auth := smtp.PlainAuth("", e.username, e.password, e.host)
 	msg := []byte(strings.Join([]string{

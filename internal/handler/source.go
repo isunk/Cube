@@ -117,7 +117,7 @@ func handleSourceBulkPost(r *http.Request) error {
 		return err
 	}
 	if len(sources) == 0 {
-			return errors.New("nothing was added or modified")
+		return errors.New("nothing was added or modified")
 	}
 
 	// 批量新增或修改
@@ -161,7 +161,7 @@ func handleSourceDelete(r *http.Request) error {
 		return err
 	}
 	if count, _ := res.RowsAffected(); count == 0 {
-			return errors.New("source does not exist")
+		return errors.New("source does not exist")
 	}
 
 	// 删除路由
