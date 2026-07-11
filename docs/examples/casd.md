@@ -1,4 +1,6 @@
-# Create a Single Sign On server based on CAS protocol
+# CAS Single Sign-On Server
+
+Implements a complete CAS (Central Authentication Service) server with ticket-granting cookies (TGC), service tickets (ST), and delegated authentication support. Includes login, logout, validation endpoints, and a web-based login interface.
 
 ## Sequence diagram
 

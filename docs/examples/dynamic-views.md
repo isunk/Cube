@@ -1,4 +1,6 @@
-# Dynamic views
+# Dynamic Views
+
+Implements dynamically generated CRUD interfaces using Vue 3 and Element Plus. Features table view with pagination and search, form view with dynamic field generation, and auto-generated database schema based on property definitions.
 
 ## Table
 

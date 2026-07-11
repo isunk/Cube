@@ -1,4 +1,6 @@
-# Create a webdav server
+# WebDAV Server
+
+Implements a WebDAV server with basic authentication support. Supports PROPFIND for directory listing, GET for file retrieval, and PUT for file updates with XML response generation for DAV protocol compliance.
 
 1. Create a controller with url `/service/webdav/{path}` and method `Any`.
     ```typescript

@@ -1,4 +1,6 @@
-# Linq to SQL
+# Linq2SQL
+
+A LINQ-style query API for type-safe database operations. Enables fluent query construction using lambda expressions with support for filtering, projection, counting, insertion, update, and deletion operations. Maps TypeScript classes to database tables automatically.
 
 ```typescript
 //?name=node_modules/linq2sql&type=module

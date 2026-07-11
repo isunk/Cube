@@ -1,5 +1,7 @@
 # BPM
 
+Business Process Management engine implementing core BPMN 2.0 concepts. Supports start/end events, user tasks, script tasks, parallel gateways, and exclusive gateways. Features process instance management, task assignment, delegation, and workflow state tracking with automatic database schema creation.
+
 ```typescript
 //?name=node_modules/bpm&type=module
 //#region types

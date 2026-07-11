@@ -1,4 +1,6 @@
-# Using DLNA to cast a video on device in LAN
+# DLNA Media Casting
+
+Demonstrates DLNA/UPnP media casting to devices on a local network. Implements SSDP device discovery, service endpoint query, and SOAP-based control protocol for streaming media content.
 
 1. Create a controller with url `/dlna`.
     ```typescript

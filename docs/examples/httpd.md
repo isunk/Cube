@@ -1,4 +1,6 @@
-# Http server that supports jpg/png resize, mp4 http-range, zip preview
+# HTTP Server
+
+A multi-purpose HTTP server with advanced file serving capabilities. Features image resizing on-the-fly, MP4 range requests for video streaming, and ZIP file preview with nested file access.
 
 1. Create a http server.
     ```typescript

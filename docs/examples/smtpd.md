@@ -1,4 +1,6 @@
-# Create a smtpd using socket module
+# SMTP Server
+
+Implements a lightweight SMTP server using raw socket operations. Supports HELO/EHLO, MAIL FROM, RCPT TO, DATA, and QUIT commands with basic email parsing and base64 decoding.
 
 1. Create a daemon.
     ```typescript

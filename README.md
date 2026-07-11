@@ -1,38 +1,38 @@
 # Cube
 
-A simple web server that can be developed online using typescript/javascript.
+A lightweight web server enabling online development with TypeScript/JavaScript.
 
-## Getting started
+## Getting Started
 
 1. Clone the repository.
 
-2. Build from the source code.
+2. Build from source:
     ```bash
     make build
     ```
-    Or build with CDN and compress with UPX:
+    Or build with CDN and UPX compression:
     ```bash
     make build CDN=1 UPX=1
     ```
 
-3. Start the server.
+3. Start the server:
     ```bash
     ./cube -n 256
     ```
-    Or you can start directly from the source code:
+    Alternatively, run directly from source:
     ```bash
     make run
     ```
-    For more startup parameters, please refer to:
+    For additional startup parameters:
     ```bash
     ./cube --help
     ```
 
-4. Open `http://127.0.0.1:8090/` in browser.
+4. Open `http://127.0.0.1:8090/` in your browser.
 
 ### Run with SSL/TLS
 
-1. Ensure that `ca.key`, `ca.crt`, `server.key` and `server.crt` have been created:
+1. Generate `ca.key`, `ca.crt`, `server.key`, and `server.crt`:
     ```bash
     make crt
     ```
@@ -40,91 +40,91 @@ A simple web server that can be developed online using typescript/javascript.
 2. Start the server:
     ```bash
     ./cube \
-        -n 256 \ # using 256 virtual machines
-        -p 8443 \ # server with port 8443
+        -n 256 \ # allocate 256 virtual machines
+        -p 8443 \ # bind to port 8443
         -s \ # enable SSL/TLS
-        -v # enable client cert verification
+        -v # enable client certificate verification
     ```
 
-3. If you are using a self-signed certificate, you can install the `ca.crt` to the local root certificate library.
+3. For self-signed certificates, install `ca.crt` to the system root certificate store:
     ```cmd
-    rem Ensure that ca.crt is installed into the Trusted Root Certification Authorities certificate store
+    rem Install ca.crt into the Trusted Root Certification Authorities store
     certutil -addstore root ca.crt
     ```
 
-4. Open `https://127.0.0.1:8443/` in browser.
+4. Access the server at `https://127.0.0.1:8443/` in your browser.
 
-5. You can run your service with client certificate using curl:
+5. Test with client certificate authentication using curl:
     ```bash
-    # Create client.key and client.crt
+    # Generate client.key and client.crt
     make ccrt
 
-    # Run the service with client.crt and ca.crt
+    # Authenticate with client certificate
     curl --cacert ./ca.crt --cert ./client.crt --key ./client.key https://127.0.0.1:8443/service/foo
     ```
-    Or you can access it in chrome:
+    Or use Chrome with a client certificate:
     ```cmd
-    rem Parse client.crt and client.key into client.p12
+    rem Convert client.crt and client.key to PKCS#12 format
     openssl pkcs12 -export -in client.crt -inkey client.key -out client.p12 -passout pass:123456
 
-    rem Install client.p12 into My certificate store
+    rem Import client.p12 into the Personal certificate store
     certutil -importPFX -f -p 123456 My client.p12
 
-    rem Open https://127.0.0.1:8443/ and select your client certificate
+    rem Launch Chrome and select the client certificate
     chrome https://127.0.0.1:8443/
     ```
 
 ### Run with HTTP/3
 
-1. Ensure that `ca.key`, `ca.crt`, `server.key` and `server.crt` have been created:
+1. Generate SSL certificates as described above:
     ```bash
     make crt
     ```
 
-2. Start the server:
+2. Start the server with HTTP/3 enabled:
     ```bash
     ./cube \
-        -n 256 \ # using 256 virtual machines
-        -p 8443 \ # server with port 8443
+        -n 256 \ # allocate 256 virtual machines
+        -p 8443 \ # bind to port 8443
         -s \ # enable SSL/TLS
         -3 # enable HTTP/3
     ```
 
-3. You can test your service using curl:
+3. Test with curl:
     ```bash
     curl --http3 -I https://127.0.0.1:8443/service/foo
     ```
-    Or you can access it in chrome with quic enabled:
+    Or test with Chrome using QUIC:
     ```cmd
-    rem Ensure that all running chrome processes are terminated
+    rem Terminate all running Chrome instances
     taskkill /f /t /im chrome.exe
 
-    rem Restart chrome with quic enabled and open https://127.0.0.1:8443/
+    rem Launch Chrome with QUIC enabled for the target origin
     chrome --enable-quic --origin-to-force-quic-on=127.0.0.1:8443 https://127.0.0.1:8443/
     ```
 
-### Run on termux
+### Run on Termux
 
-1. Download:
+1. Download the latest release:
     ```bash
     wget https://xget.xi-xu.me/gh/isunk/Cube/releases/download/latest/cube-latest-linux-arm64.tar.gz && tar zxvf cube-latest-linux-arm64.tar.gz
     ```
 
-2. Start the server:
+2. Configure and start the server:
     ```bash
     # Install proot
     pkg install proot
 
-    # Create and link cube.db
+    # Create and link the database file
     touch ~/storage/shared/cube.db && ln -s ~/storage/shared/cube.db ~/cube.db
 
-    # Link files
+    # Link the files directory
     ln -s ~/storage/shared/Download ~/files
 
     # Set execution permissions
     chmod +x ~/cube
 
-    # Run
+    # Run with required system file bindings
     proot -b $PREFIX/etc/resolv.conf:/etc/resolv.conf -b $PREFIX/etc/tls/cert.pem:/etc/ssl/certs/ca-certificates.crt ./cube
     ```
 
@@ -132,38 +132,38 @@ A simple web server that can be developed online using typescript/javascript.
 
 ### Controller
 
-You can create a controller as a http/https service.
+Controllers handle HTTP/HTTPS requests and return responses.
 
-- A simple controller
+- Basic controller:
     ```typescript
     export default function (ctx: ServiceContext): ServiceResponse | Uint8Array | any {
         return "hello, world"
     }
     ```
 
-- Get request parameters
-    1. Create a controller with name `greeting`, type `controller` and url `/service/{name}/greeting/{words}`.
+- Access request parameters:
+    1. Create a controller named `greeting` with type `controller` and URL `/service/{name}/greeting/{words}`:
         ```typescript
         export default function (ctx: ServiceContext) {
-            // get http request body
+            // Retrieve request body as string
             String.fromCharCode(...ctx.getBody())
 
-            // get variables in path
+            // Extract path variables
             ctx.getPathVariables() // {"name":"zhangsan","words":"hello"}
 
-            // get request form
+            // Parse form data
             ctx.getForm() // {"a":["1","3"],"b":["2"],"c":[""],"d":["4","6"],"e":["5"],"f":[""]}
 
-            // get request url path and params
+            // Get URL path and query parameters
             ctx.getURL() // {"params":{"a":["1","3"],"b":["2"],"c":[""]},"path":"/service/foo"}
         }
         ```
-    2. You can test it using curl:
+    2. Test with curl:
         ```bash
         curl -XPOST -H "Content-Type: application/x-www-form-urlencoded" "http://127.0.0.1:8090/service/zhangsan/greeting/hello?a=1&b=2&c&a=3" -d "d=4&e=5&f&d=6"
         ```
 
-- Return a custom response
+- Return custom responses:
     ```typescript
     export default function (ctx: ServiceContext): ServiceResponse {
         // return new Uint8Array([104, 101, 108, 108, 111]) // response with body "hello"
@@ -173,18 +173,18 @@ You can create a controller as a http/https service.
     }
     ```
 
-- Websocket server
+- WebSocket server:
     ```typescript
     export default function (ctx: ServiceContext) {
-        const ws = ctx.upgradeToWebSocket() // upgrade http and get a websocket
-        console.info(ws.read()) // read a message
-        ws.send("hello, world") // write a message
-        ws.close() // close the connection
+        const ws = ctx.upgradeToWebSocket() // upgrade HTTP connection to WebSocket
+        console.info(ws.read()) // read incoming message
+        ws.send("hello, world") // send message to client
+        ws.close() // terminate connection
     }
     ```
 
-- Http chunk
-    1. Create a controller with name `foo`, type `controller` and url `/service/foo`.
+- HTTP chunked transfer:
+    1. Create a controller named `foo` with type `controller` and URL `/service/foo`:
         ```typescript
         export default function (ctx: ServiceContext) {
             ctx.write("hello, chunk 0")
@@ -195,22 +195,22 @@ You can create a controller as a http/https service.
             ctx.flush()
         }
         ```
-    2. You can test it using telnet:
+    2. Test with telnet:
         ```bash
         { echo "GET /service/foo HTTP/1.1"; echo "Host: 127.0.0.1"; echo ""; sleep 1; echo exit; } | telnet 127.0.0.1 8090
         ```
 
-- Read byte(s) from request body or read chunks from a chunked request
+- Read request body incrementally:
     ```typescript
     export default function (ctx: ServiceContext) {
         const reader = ctx.getReader()
 
-        // String.fromCharCode(...reader.read(10)) // Read 10 bytes from request body as a Uint8Array. Return null if got EOF.
+        // String.fromCharCode(...reader.read(10)) // Read 10 bytes from request body. Returns null on EOF.
 
         const arr = []
 
         let byte = reader.readByte()
-        while (byte != -1) { // Return -1 if got EOF
+        while (byte != -1) { // Returns -1 on EOF
             arr.push(byte)
             byte = reader.readByte()
         }
@@ -221,9 +221,9 @@ You can create a controller as a http/https service.
 
 ### Module
 
-A module can be imported in the controller.
+Modules provide reusable code that can be imported by controllers.
 
-- A custom module
+- Custom module:
     ```typescript
     export const user = {
         name: "zhangsan"
@@ -237,9 +237,9 @@ A module can be imported in the controller.
     }
     ```
 
-- [A custom module extends Number](docs/modules/number.md)
+- [Extend the Number prototype](docs/modules/number.md)
 
-- Import a module from remote with http/https.
+- Import modules from remote sources via HTTP/HTTPS:
     ```typescript
     import * as JSON5 from "https://unpkg.com/json5@2/dist/index.min.js"
 
@@ -250,9 +250,9 @@ A module can be imported in the controller.
 
 ### Daemon
 
-The daemon is a backend running service with no timeout limit.
+Daemons are long-running background services with no execution timeout.
 
-- Create a daemon
+- Create a daemon:
     ```typescript
     export default function () {
         const b = $native("pipe")("default")
@@ -262,11 +262,11 @@ The daemon is a backend running service with no timeout limit.
     }
     ```
 
-### Builtin
+### Built-in Methods and Modules
 
-Here are some built-in methods and modules.
+The following built-in utilities are available:
 
-- Buffer
+- Buffer:
     ```typescript
     const buf = Buffer.from("hello", "utf8")
     buf // [104, 101, 108, 108, 111]
@@ -274,19 +274,19 @@ Here are some built-in methods and modules.
     String.fromCharCode(...buf) // hello
     ```
 
-- Console
+- Console:
     ```typescript
     // ...
-    console.error("this is a error message")
+    console.error("this is an error message")
     ```
 
-- Date
+- Date:
     ```typescript
     Date.toDate("2006-01-02 15:04:05.012", "yyyy-MM-dd HH:mm:ss.SSS")
         .toString("yyyyMMddHHmmssSSS") // "20060102150405012"
     ```
 
-- Decimal
+- Decimal:
     ```typescript
     const d1 = new Decimal("0.1"),
         d2 = new Decimal("0.2")
@@ -296,7 +296,7 @@ Here are some built-in methods and modules.
     d2.div(d1) // 2
     ```
 
-- Error
+- Error Handling:
     ```typescript
     // ...
     throw new Error("error message")
@@ -308,9 +308,11 @@ Here are some built-in methods and modules.
     }
     ```
 
-### Native modules
+### Native Modules
 
-- Bqueue & Pipe
+Native modules provide access to system-level functionality:
+
+- Bqueue & Pipe:
     ```typescript
     const b = $native("pipe")("mypipe")
     // const b = $native("bqueue")(99)
@@ -319,12 +321,12 @@ Here are some built-in methods and modules.
     b.drain(4, 2000) // [1, 2]
     ```
 
-- Db
+- Database:
     ```typescript
     $native("db").query("select name from script") // [{"name":"foo"}, {"name":"user"}]
     ```
 
-- Email
+- Email:
     ```typescript
     const emailc = $native("email")("smtp.163.com", 465, username, password)
     emailc.send(["zhangsan@abc.com"], "greeting", "hello, world")
@@ -335,7 +337,7 @@ Here are some built-in methods and modules.
     }])
     ```
 
-- Crypto
+- Crypto:
     ```typescript
     const cryptoc = $native("crypto")
     // hash
@@ -343,7 +345,7 @@ Here are some built-in methods and modules.
     // hmac
     cryptoc.createHmac("sha1").sum("hello, world", "123456").toString("hex") // "9a231f1dd39a4ff6ea778a5640d1498794f8a9f8"
     // rsa
-    // privateKey and publicKey mentioned is PKCS#1 format
+    // privateKey and publicKey are in PKCS#1 format
     const rsa = cryptoc.createRsa(),
         { privateKey, publicKey } = rsa.generateKey();
     rsa.decrypt(
@@ -359,22 +361,22 @@ Here are some built-in methods and modules.
     ) // true
     ```
 
-- File
+- File System:
     ```typescript
     const filec = $native("file")
     filec.write("greeting.txt", "hello, world")
     String.fromCharCode(...filec.read("greeting.txt")) // "hello, world"
     ```
 
-- Http
+- HTTP Client:
     ```typescript
     const httpc = $native("http")({
-        // caCert: "",                     // ca certificates for http client
-        // cert: "", key: "",              // private key and certificate/public key for http client auth
-        // proxy: "http://127.0.0.1:5566", // proxy server
-        // isSkipInsecureVerify: true,     // disable verify server certificate
-        // isHttp3: true,                  // enable http3
-        // isNotFollowRedirect: true,      // disable follow redirect
+        // caCert: "",                     // CA certificates for TLS verification
+        // cert: "", key: "",              // Client certificate and private key for mutual TLS
+        // proxy: "http://127.0.0.1:5566", // HTTP proxy server
+        // isSkipInsecureVerify: true,     // Disable server certificate validation
+        // isHttp3: true,                  // Enable HTTP/3 support
+        // isNotFollowRedirect: true,      // Disable automatic redirect following
     })
     const { status, header, data } = httpc.request("GET", "https://www.baidu.com")
     status // 200
@@ -382,7 +384,7 @@ Here are some built-in methods and modules.
     data.toString() // "<html>..."
     ```
 
-- Image
+- Image Processing:
     ```typescript
     const imagec = $native("image"),
         filec = $native("file")
@@ -403,9 +405,10 @@ Here are some built-in methods and modules.
         }
     }
 
-    img.drawString(text, img.width(), img.height() - textHeight, 1, 1) // write text in the bottom right corner of the image
+    img.drawString(text, img.width(), img.height() - textHeight, 1, 1) // write text in the bottom right corner
 
-    // Use the Lasso tool to replace the pixels (ranging from [0, 0, 0, 255] to [200, 200, 200, 255]) with [0, 0, 0, 0] in the polygonal area ([0, 0], [1200, 0], [1200, 1200]) 
+    // Use the lasso tool to replace pixels in the specified range with transparency
+    // Pixels ranging from [0, 0, 0, 255] to [200, 200, 200, 255] are replaced with [0, 0, 0, 0] within the polygonal area defined by [(0, 0), (1200, 0), (1200, 1200)]
     const img2 = img.lasso([
         [0, 0], [1200, 0], [1200, 1200],
     ], [0, 0, 0, 255, 200, 200, 200], [0, 0, 0, 0])
@@ -413,16 +416,16 @@ Here are some built-in methods and modules.
     filec.write("output.jpg", img2.resize(1280).toJPG())
     ```
 
-- Template
+- Template Engine:
     ```typescript
-    const content = $native("template")("greeting", { // read template greeting.tpl and render with input
+    const content = $native("template")("greeting", { // read template greeting.tpl and render with data
         name: "this is name",
     })
     ```
 
-- Xml
+- XML Processing:
     ```typescript
-    // see https://github.com/antchfx/xpath for syntax
+    // XPath syntax follows https://github.com/antchfx/xpath
     const doc = $native("xml")(`
         <Users>
             <User>
@@ -440,10 +443,10 @@ Here are some built-in methods and modules.
     doc.findOne("//user[1]").findOne("name").innerText() // zhangsan
     ```
 
-### Advance
+### Advanced Topics
 
-- Upload file
-    1. Create a resource with lang `html` and url `/resource/foo.html`.
+- File Upload:
+    1. Create a resource with language `html` and URL `/resource/foo.html`:
         ```html
         <!DOCTYPE html>
         <html>
@@ -468,7 +471,7 @@ Here are some built-in methods and modules.
         </script>
         </html>
         ```
-    2. Create a controller with url `/service/foo`.
+    2. Create a controller at `/service/foo`:
         ```typescript
         export default function (ctx: ServiceContext) {
             const file = ctx.getFile("file"),
@@ -476,10 +479,12 @@ Here are some built-in methods and modules.
             console.info(hash)
         }
         ```
-    3. You can preview at `http://127.0.0.1:8090/resource/foo.html`. You can also run it using curl:
+    3. Preview at `http://127.0.0.1:8090/resource/foo.html`, or test with curl:
         ```bash
         # Upload a file
         curl -F "file=@./abc.txt; filename=abc.txt;" http://127.0.0.1:8090/service/foo
         ```
 
-### More examples can be found in [document](docs/summary.md)
+### Additional Resources
+
+For more examples and detailed documentation, refer to the [documentation summary](docs/summary.md).

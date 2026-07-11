@@ -1,47 +1,59 @@
-# Document
+# Documentation
 
-### Modules
+Welcome to the Cube documentation. Below you'll find comprehensive guides and examples for leveraging Cube's capabilities.
 
-- [A custom module extends Number](modules/number.md)
+## Modules
 
-- [SQL](modules/sql.md)、[Linq2SQL](modules/linq2sql.md)、[GraphQL](modules/graphql.md)、[DbHelper](modules/dbhelper.md)
+### Data & Database
 
-- [BPM](modules/bpm.md)
+- **[SQL](modules/sql.md)** - SQL query builder with template syntax supporting conditional clauses and parameter binding
+- **[Linq2SQL](modules/linq2sql.md)** - LINQ-style query API for type-safe database operations
+- **[GraphQL](modules/graphql.md)** - GraphQL-like query and mutation engine with schema-based data access
+- **[DbHelper](modules/dbhelper.md)** - Database abstraction layer supporting MySQL and SQLite with unified CRUD operations
 
-- [WebFlow](modules/webflow.md)
+### Workflow & Process
 
-- [Validator](modules/validator.md)、[XSS](modules/xss.md)
+- **[BPM](modules/bpm.md)** - Business Process Management engine with support for user tasks, gateways, and process orchestration
+- **[WebFlow](modules/webflow.md)** - Web application flow controller managing state transitions between views and actions
 
-- [Server-Side Rendering](modules/ssr.md)
+### Validation & Security
 
-- [CSV](modules/csv.md)
+- **[Validator](modules/validator.md)** - Schema-based parameter validation supporting strings, numbers, dates, objects, and collections
+- **[XSS](modules/xss.md)** - Cross-site scripting (XSS) filter with configurable tag and attribute whitelist
+- **[Permission](modules/permission.md)** - Role-based access control with wildcard pattern matching for permission checks
 
-- [Permission](modules/permission.md)
+### Utilities
 
-### Examples
+- **[Number](modules/number.md)** - Extended Number prototype with IPv4 address conversion utilities
+- **[CSV](modules/csv.md)** - CSV parser and serializer supporting complex data formats and custom delimiters
+- **[SSR](modules/ssr.md)** - Server-side rendering engine with template syntax and client-server method binding
 
-- [Return a view with asynchronous vues](examples/vue.md)
+## Examples
 
-- [Play a video online using HTTP-FLV](examples/httpflv.md)
+### Web Development
 
-- [Using DLNA to cast a video on device in LAN](examples/dlna.md)
+- **[Vue Integration](examples/vue.md)** - Asynchronous Vue component loading with Vue 2 and Vue 3 support
+- **[Dynamic Views](examples/dynamic-views.md)** - Dynamic view rendering with runtime component loading
 
-- [Pay online using Alipay](examples/alipay.md)
+### Media & Streaming
 
-- [Dynamic views](examples/dynamic-views.md)
+- **[HTTP-FLV Streaming](examples/httpflv.md)** - Live video streaming using HTTP-FLV protocol with flv.js
+- **[DLNA Casting](examples/dlna.md)** - Media casting to DLNA-enabled devices on local network
+- **[Video-on-Demand](examples/vodd.md)** - VOD server with MAC CMS integration and content crawling
+- **[RTMP Server](examples/rtmpd.md)** - RTMP streaming server with HTTP-FLV conversion
 
-- [Create a webchat with peerjs](examples/webrtc.md)
+### Servers & Services
 
-- [Http server that supports jpg/png resize, mp4 http-range, zip preview](examples/httpd.md)
+- **[HTTP Server](examples/httpd.md)** - Multi-purpose HTTP server with image resizing, MP4 range requests, and ZIP preview
+- **[WebDAV Server](examples/webdavd.md)** - WebDAV protocol implementation for file management
+- **[SMTP Server](examples/smtpd.md)** - SMTP server implementation using socket module
+- **[Mock Server](examples/mockd.md)** - Mock API server for development and testing
 
-- [Rtmp server that convert the rtmp stream into an HTTP-FLV stream](examples/rtmpd.md)
+### Authentication & Payments
 
-- [Smtp server using socket module](examples/smtpd.md)
+- **[CAS SSO](examples/casd.md)** - Single Sign-On server based on CAS protocol
+- **[Alipay Payment](examples/alipay.md)** - Online payment integration with Alipay sandbox
 
-- [Webdav server](examples/webdavd.md)
+### Real-time Communication
 
-- [Single Sign On server based on CAS protocol](examples/casd.md)
-
-- [Video-on-Demand server based on MAC CMS, crawler](examples/vodd.md)
-
-- [Mock server](examples/mockd.md)
+- **[WebRTC Chat](examples/webrtc.md)** - Peer-to-peer web chat application using PeerJS

@@ -1,4 +1,6 @@
-# Create an rtmpd and convert the rtmp stream into an HTTP-FLV stream
+# RTMP to HTTP-FLV Streaming
+
+Implements a full RTMP server that converts incoming RTMP streams to HTTP-FLV format. Includes RTMP handshake, chunk protocol parsing, AMF0 encoding/decoding, and FLV tag generation with event-driven stream distribution.
 
 1. Create a daemon with name `rtmpd` and start.
     ```typescript

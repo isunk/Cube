@@ -1,4 +1,6 @@
-# Pay online using Alipay
+# Alipay Payment Integration
+
+Integrates Alipay sandbox for online payments. Implements RSA2 signature generation and verification, payment page rendering, and asynchronous notification handling.
 
 1. Create a controller with url `/service/alipay`.
     ```typescript

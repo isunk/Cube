@@ -1,5 +1,7 @@
 # Permission
 
+Role-based access control with wildcard pattern matching. Validates permissions using colon-separated hierarchical patterns (e.g., `user:*`, `user.role:admin`). Provides both programmatic permission checking and decorator-based method protection.
+
 ```typescript
 //?name=node_modules/permission&type=module
 export class Permission {
@@ -40,7 +42,7 @@ export const decorator = (input: Permission | string[]) => {
         return function (value: Function, context: any) {
             return function (this, ...args: any[]) {
                 if (!$.has(perm)) {
-                    throw new Error("Permisson denied")
+                    throw new Error("Permission denied")
                 }
                 return value.apply(this, args)
             }

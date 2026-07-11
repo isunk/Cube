@@ -1,5 +1,7 @@
 # Validator
 
+A comprehensive schema-based parameter validation library. Supports validation of strings, integers, numbers, dates, objects, and collections with configurable rules including required fields, length constraints, value ranges, regex patterns, and custom validation functions.
+
 ```typescript
 //?name=node_modules/validator&type=module
 type GeneralSchema = {

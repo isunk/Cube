@@ -1,4 +1,6 @@
-# Return a view with asynchronous vues
+# Vue Integration
+
+Demonstrates how to integrate Vue.js with Cube for asynchronous component loading. Covers both Vue 2 and Vue 3 with dynamic routing and remote component loading using http-vue-loader.
 
 ## Vue 2
 

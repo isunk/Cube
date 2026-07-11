@@ -1,4 +1,6 @@
-# Video-on-Demand server based on [MAC CMS](ttps://github.com/magicblack/maccms10/blob/master/%E8%AF%B4%E6%98%8E%E6%96%87%E6%A1%A3/API%E6%8E%A5%E5%8F%A3%E8%AF%B4%E6%98%8E.txt), crawler
+# Video-on-Demand Server
+
+Implements a VOD server with multiple content sources including MAC CMS API integration and web scraping crawler. Features video listing, search, pagination, and detailed video information retrieval with a responsive Vue.js frontend.
 
 1. Create a controller with url `/service/vod` and method `Get`.
     ```typescript

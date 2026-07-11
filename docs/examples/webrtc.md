@@ -1,4 +1,6 @@
-# WebRTC
+# WebRTC Chat
+
+Implements a peer-to-peer web chat application using WebRTC and PeerJS. Supports text messages, image sharing, and file transfers with real-time connection management and message history.
 
 1. Create a html resource.
     ```html

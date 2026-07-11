@@ -1,5 +1,7 @@
 # CSV
 
+A robust CSV parser and serializer. Automatically detects delimiters and line breaks, handles quoted fields with escaped characters, and supports conversion between CSV format and JSON arrays. Provides methods for both flexible and simplified CSV operations.
+
 ```typescript
 //?name=node_modules/csv&type=module
 export class CSV {

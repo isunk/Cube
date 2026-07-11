@@ -1,4 +1,6 @@
-# Mock server
+# Mock Server
+
+A comprehensive mock API server for development and testing. Supports service management with collections, pre-request/pre-response scripts, variable storage, and HAR file import. Features a full-featured management UI with Monaco Editor integration.
 
 1. Create a controller with url `/service/mockd` and method `Any`.
     ```typescript

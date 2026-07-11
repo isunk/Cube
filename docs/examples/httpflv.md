@@ -1,4 +1,6 @@
-# Play a video online using HTTP-FLV
+# HTTP-FLV Streaming
+
+Implements HTTP-FLV video streaming with chunked transfer encoding. Shows how to serve FLV files with proper chunking and integrate with flv.js for client-side playback.
 
 1. Create a flv file under `files/` using ffmpeg:
     ```bash

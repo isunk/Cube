@@ -1,5 +1,7 @@
 # DbHelper
 
+Database abstraction layer supporting multiple database backends. Provides unified CRUD operations, table management, index handling, and condition-based queries. Includes adapters for MySQL and SQLite with automatic SQL dialect conversion.
+
 
 ```typescript
 //?name=DbHelper&type=module
@@ -174,7 +176,7 @@ export class MySQLHelper {
     }
 }
 
-export class SqliteAdpater extends MySQLHelper {    
+export class SqliteAdapter extends MySQLHelper {    
     protected onParseTableExtInfo() {
         return ""
     }

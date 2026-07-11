@@ -1,5 +1,7 @@
 # GraphQL
 
+A GraphQL-like query and mutation engine with schema-based data access. Supports nested queries with relationship resolution, conditional filtering with multiple operators, pagination, and automatic foreign key handling. Provides abstract base class for custom database adapters.
+
 ```typescript
 //?name=node_modules/graphql&type=module
 //#region record

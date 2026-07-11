@@ -1,4 +1,6 @@
-# Server-Side Rendering
+# SSR
+
+Server-side rendering engine with embedded template syntax. Supports `<%= %>` for output expressions, `<% %>` for logic code, and `{{ }}` for simple variable substitution. Enables seamless client-server method binding through automatic JavaScript bridge generation.
 
 ```typescript
 //?name=node_modules/ssr&type=module
@@ -102,7 +104,7 @@ const p = new ServerPage(`<html>
     if(user.age < 18) { %>
         <li>我的名字是<%=user.name%>，我的年龄是<%=user.age%></li>
     <% } else { %>
-        <li>my name is <%=user.name%>,my age is a sercet.</li>
+        <li>my name is <%=user.name%>, my age is a secret.</li>
     <% } %>
 <% } %>
     </ul>

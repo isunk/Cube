@@ -1,5 +1,7 @@
 # XSS
 
+Cross-site scripting (XSS) filter with configurable tag and attribute whitelist. Parses HTML input token by token, escapes potentially dangerous characters, and only allows safe HTML tags and attributes. Provides callback hooks for custom tag and attribute handling.
+
 ```typescript
 //?name=node_modules/xss&type=module
 export class XSS {

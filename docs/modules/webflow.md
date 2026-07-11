@@ -1,5 +1,7 @@
 # WebFlow
 
+Web application flow controller managing state transitions between views and actions. Supports start states, view states, action states, subflows, and end states with event-driven transitions. Maintains session state using sessionStorage for multi-step workflows.
+
 ```typescript
 //?name=node_modules/webflow&type=module
 interface Transition {

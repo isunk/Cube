@@ -1,5 +1,7 @@
 # SQL
 
+A powerful SQL query builder with template syntax. Supports conditional clauses using XML-like `<if>` tags, parameterized queries with `#{variable}#` syntax, and array handling for IN clauses. Designed to be used as a decorator on class methods for type-safe database operations.
+
 ```typescript
 //?name=node_modules/sql&type=module
 export function sql(stmt: string): any {

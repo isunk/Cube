@@ -1,4 +1,6 @@
-# A custom module extends Number
+# Number
+
+Extends the JavaScript Number prototype with IPv4 address conversion utilities. This module provides bidirectional conversion between IPv4 addresses and their numeric representations.
 
 ```typescript
 //?name=node_modules/number&type=module
