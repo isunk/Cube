@@ -16,12 +16,7 @@ type Worker interface {
 	Interrupt(reason string)
 }
 
-type Cache interface {
-	GetDbSource(dbType, connection string) (*sql.DB, error)
-}
-
 type Context struct {
 	Worker Worker
 	Db     *sql.DB
-	Cache  Cache
 }

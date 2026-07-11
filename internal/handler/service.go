@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"cube/internal"
+	"cube/internal/cache"
 	"cube/internal/log"
 	"cube/internal/util"
 )
@@ -14,13 +15,13 @@ func HandleService(w http.ResponseWriter, r *http.Request) {
 	path := strings.TrimPrefix(r.URL.Path, "/service/")
 
 	// 查询 controller
-	name, vars := internal.Cache.GetRoute(path)
+	name, vars := cache.Route.Get(path)
 	if name == "" {
 		Error(w, http.StatusNotFound)
 		return
 	}
 
-	source := internal.Cache.GetController(name)
+	source := cache.Controller.Get(name)
 	if source.Method != "" && source.Method != r.Method { // 校验请求方法
 		Error(w, http.StatusMethodNotAllowed)
 		return

@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"time"
 
+	"cube/internal/cache"
 	"github.com/dop251/goja"
 	_ "github.com/go-sql-driver/mysql"
 	_ "modernc.org/sqlite"
@@ -27,7 +28,7 @@ func init() {
 				panic(runtime.NewTypeError("invalid connection: not a string"))
 			}
 
-			db, err := ctx.Cache.GetDbSource(dtype, connection)
+			db, err := cache.DB.Get(dtype, connection)
 			if err != nil {
 				panic(runtime.NewTypeError("invalid connection: connect failed"))
 			}

@@ -1,6 +1,7 @@
 package internal
 
 import (
+	"cube/internal/cache"
 	"github.com/robfig/cron/v3"
 )
 
@@ -27,7 +28,7 @@ func RunCrontabs(name string) {
 			continue
 		}
 
-		if _, ok := Cache.Crontabs[n]; ok { // 防止重复添加任务
+		if _, ok := cache.Crontab.Get(n); ok { // 防止重复添加任务
 			continue
 		}
 
@@ -42,6 +43,6 @@ func RunCrontabs(name string) {
 		if err != nil {
 			panic(err)
 		}
-		Cache.Crontabs[n] = id
+		cache.Crontab.Add(n, id)
 	}
 }

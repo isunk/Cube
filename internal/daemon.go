@@ -1,6 +1,9 @@
 package internal
 
-import "cube/internal/log"
+import (
+	"cube/internal/cache"
+	"cube/internal/log"
+)
 
 func RunDaemons(name string) {
 	if name == "" {
@@ -21,7 +24,7 @@ func RunDaemons(name string) {
 			continue
 		}
 
-		if Cache.Daemons[n] != nil { // 防止重复执行
+		if _, exists := cache.Daemon.Get(n); exists { // 防止重复执行
 			continue
 		}
 
@@ -30,10 +33,10 @@ func RunDaemons(name string) {
 			defer func() {
 				worker.Reset()
 				WorkerPool.Channels <- worker
-				delete(Cache.Daemons, n)
+				cache.Daemon.Remove(n)
 			}()
 
-			Cache.Daemons[n] = worker
+			cache.Daemon.Add(n, worker)
 
 			_, err := worker.Run(worker.Runtime().ToValue("./daemon/" + n))
 			if err != nil {

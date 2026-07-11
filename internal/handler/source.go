@@ -10,7 +10,8 @@ import (
 	"strings"
 	"time"
 
-	. "cube/internal"
+	"cube/internal"
+	"cube/internal/cache"
 	"cube/internal/model"
 	"cube/internal/util"
 
@@ -80,7 +81,7 @@ func handleSourcePost(r *http.Request) error {
 	// 校验 url 不能重复
 	if source.Type == "controller" || source.Type == "resource" {
 		var count int
-		if err := Db.QueryRow("select count(1) from source where type = ? and url = ? and name != ?", source.Type, source.Url, source.Name).Scan(&count); err != nil {
+		if err := internal.Db.QueryRow("select count(1) from source where type = ? and url = ? and name != ?", source.Type, source.Url, source.Name).Scan(&count); err != nil {
 			return err
 		}
 		if count > 0 {
@@ -96,13 +97,13 @@ func handleSourcePost(r *http.Request) error {
 	// 校验 name 和 type 不能重复
 	{
 		var count int
-		if Db.QueryRow("select count(1) from source where name = ? and type = ?", source.Name, source.Type).Scan(&count); count > 0 {
+		if internal.Db.QueryRow("select count(1) from source where name = ? and type = ?", source.Name, source.Type).Scan(&count); count > 0 {
 			return errors.New("source already existed")
 		}
 	}
 
 	// 新增
-	if _, err := Db.Exec("insert into source (name, type, lang, content, compiled, active, method, url, cron, tag, last_modified_date) values(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))", source.Name, source.Type, source.Lang, source.Content, source.Compiled, source.Active, source.Method, source.Url, source.Cron, source.Tag); err != nil {
+	if _, err := internal.Db.Exec("insert into source (name, type, lang, content, compiled, active, method, url, cron, tag, last_modified_date) values(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))", source.Name, source.Type, source.Lang, source.Content, source.Compiled, source.Active, source.Method, source.Url, source.Cron, source.Tag); err != nil {
 		return err
 	}
 
@@ -120,7 +121,7 @@ func handleSourceBulkPost(r *http.Request) error {
 	}
 
 	// 批量新增或修改
-	stmt, err := Db.Prepare("insert or replace into source (rowid, name, type, lang, content, compiled, active, method, url, cron, tag, last_modified_date) values(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+	stmt, err := internal.Db.Prepare("insert or replace into source (rowid, name, type, lang, content, compiled, active, method, url, cron, tag, last_modified_date) values(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
 	if err != nil {
 		return err
 	}
@@ -134,13 +135,13 @@ func handleSourceBulkPost(r *http.Request) error {
 		}
 	}
 
-	Cache.InitRoutes()
+	cache.Route.Init()
 	// 批量导入后，需要清空 module 缓存以重建
-	Cache.Modules = make(map[string]*goja.Program)
+	cache.Module.Clear()
 	// 启动守护任务
-	RunDaemons("")
+	internal.RunDaemons("")
 	// 启动定时任务
-	RunCrontabs("")
+	internal.RunCrontabs("")
 
 	return nil
 }
@@ -155,7 +156,7 @@ func handleSourceDelete(r *http.Request) error {
 		return errors.New("type is required")
 	}
 
-	res, err := Db.Exec("delete from source where name = ? and type = ?", name, stype)
+	res, err := internal.Db.Exec("delete from source where name = ? and type = ?", name, stype)
 	if err != nil {
 		return err
 	}
@@ -165,7 +166,9 @@ func handleSourceDelete(r *http.Request) error {
 
 	// 删除路由
 	if stype == "controller" {
-		delete(Cache.Routes, name)
+		// 需要提供一个删除路由的方法
+		// 暂时通过重新初始化路由来处理
+		cache.Route.Remove(name)
 	}
 
 	return nil
@@ -189,7 +192,7 @@ func handleSourcePut(r *http.Request) (interface{}, error) {
 	// 校验 url 不能重复
 	if url != nil && (stype == "controller" || stype == "resource") {
 		var count int
-		if err := Db.QueryRow("select count(1) from source where type = ? and url = ? and active = true and name != ?", stype, url, name).Scan(&count); err != nil {
+		if err := internal.Db.QueryRow("select count(1) from source where type = ? and url = ? and active = true and name != ?", stype, url, name).Scan(&count); err != nil {
 			return nil, err
 		}
 		if count > 0 {
@@ -205,7 +208,7 @@ func handleSourcePut(r *http.Request) (interface{}, error) {
 	// 校验最后修改时间（版本号）
 	if mdate != nil {
 		var rdate string
-		if err := Db.QueryRow("select last_modified_date from source where name = ? and type = ?", name, stype).Scan(&rdate); err != nil {
+		if err := internal.Db.QueryRow("select last_modified_date from source where name = ? and type = ?", name, stype).Scan(&rdate); err != nil {
 			return nil, err
 		}
 		if rdate == "" {
@@ -225,7 +228,7 @@ func handleSourcePut(r *http.Request) (interface{}, error) {
 		}
 	}
 	// 执行修改
-	res, err := Db.Exec("update source set last_modified_date = datetime('now', 'localtime')"+sets+" where name = ? and type = ?", append(params, []interface{}{name, stype}...)...)
+	res, err := internal.Db.Exec("update source set last_modified_date = datetime('now', 'localtime')"+sets+" where name = ? and type = ?", append(params, []interface{}{name, stype}...)...)
 	if err != nil {
 		return nil, err
 	}
@@ -235,45 +238,47 @@ func handleSourcePut(r *http.Request) (interface{}, error) {
 
 	// 查询更新后的记录
 	var source model.Source
-	if err := Db.QueryRow("select name, type, lang, active, method, url, cron, tag, last_modified_date from source where name = ? and type = ?", name, stype).Scan(&source.Name, &source.Type, &source.Lang, &source.Active, &source.Method, &source.Url, &source.Cron, &source.Tag, &source.LastModifiedDate); err != nil {
+	if err := internal.Db.QueryRow("select name, type, lang, active, method, url, cron, tag, last_modified_date from source where name = ? and type = ?", name, stype).Scan(&source.Name, &source.Type, &source.Lang, &source.Active, &source.Method, &source.Url, &source.Cron, &source.Tag, &source.LastModifiedDate); err != nil {
 		return nil, err
 	}
 
 	switch source.Type {
 	case "module":
 		if strings.HasPrefix(source.Name, "node_modules/") {
-			delete(Cache.Modules, source.Name[13:]) // 删除缓存
+			cache.Module.Remove(source.Name[13:]) // 删除缓存
 		} else {
-			delete(Cache.Modules, "./"+source.Name)
+			cache.Module.Remove("./" + source.Name)
 		}
 	case "controller":
 		if source.Active {
-			Cache.SetRoute(source.Name, source.Url) // 更新路由
+			// 更新路由
+			cache.Route.Set(source.Name, source.Url) // 更新路由
 		} else {
-			delete(Cache.Routes, source.Name) // 删除路由
+			// 删除路由
+			cache.Route.Remove(source.Name)
 		}
-		delete(Cache.Controllers, source.Name) // 删除缓存
-		delete(Cache.Modules, "./controller/"+source.Name)
+		cache.Controller.Remove(source.Name) // 删除缓存
+		cache.Module.Remove("./controller/" + source.Name)
 	case "crontab":
-		id, ok := Cache.Crontabs[source.Name]
+		id, ok := cache.Crontab.Get(source.Name)
 		if !ok && source.Active {
-			RunCrontabs(source.Name) // 启动 crontab
+			internal.RunCrontabs(source.Name) // 启动 crontab
 		}
 		if ok && !source.Active {
-			Crontab.Remove(id)                  // // 停止 crontab
-			delete(Cache.Crontabs, source.Name) // 删除缓存
+			internal.Crontab.Remove(id)
+			cache.Crontab.Remove(source.Name) // 删除缓存
 		}
-		delete(Cache.Modules, "./crontab/"+source.Name)
+		cache.Module.Remove("./crontab/" + source.Name)
 	case "daemon":
 		if source.Active {
-			if Cache.Daemons[source.Name] == nil && status == "true" {
-				RunDaemons(source.Name) // 启动
+			if _, exists := cache.Daemon.Get(source.Name); !exists && status == "true" {
+				internal.RunDaemons(source.Name) // 启动
 			}
-			if Cache.Daemons[source.Name] != nil && status == "false" {
-				Cache.Daemons[source.Name].Interrupt("Daemon stopped") // 停止，停止后会自动清理缓存，见 RunDaemons 方法的 defer 实现
+			if worker, exists := cache.Daemon.Get(source.Name); exists && status == "false" {
+				worker.Interrupt("Daemon stopped") // 停止，停止后会自动清理缓存，见 RunDaemons 方法的 defer 实现
 			}
 		}
-		delete(Cache.Modules, "./daemon/"+source.Name)
+		cache.Module.Remove("./daemon/" + source.Name)
 	}
 
 	return map[string]interface{}{
@@ -329,7 +334,7 @@ func handleSourceGet(w http.ResponseWriter, r *http.Request) (interface{}, bool,
 	data.Sources = make([]model.Source, 0, size)
 
 	// 查询总数
-	if err := Db.QueryRow("select count(1) from source where "+wheres, params...).Scan(&data.Total); err != nil { // 调用 QueryRow 方法后，须调用 Scan 方法，否则连接将不会被释放
+	if err := internal.Db.QueryRow("select count(1) from source where "+wheres, params...).Scan(&data.Total); err != nil { // 调用 QueryRow 方法后，须调用 Scan 方法，否则连接将不会被释放
 		return data, false, err
 	}
 
@@ -342,7 +347,7 @@ func handleSourceGet(w http.ResponseWriter, r *http.Request) (interface{}, bool,
 		columns = strings.Replace(columns, ", content", ", '' content", 1)
 		columns = strings.Replace(columns, ", compiled", ", '' compiled", 1)
 	}
-	rows, err := Db.Query("select "+columns+" from source where "+wheres+" order by "+orders+" limit ?, ?", append(params, []interface{}{from, size}...)...)
+	rows, err := internal.Db.Query("select "+columns+" from source where "+wheres+" order by "+orders+" limit ?, ?", append(params, []interface{}{from, size}...)...)
 	if err != nil {
 		return data, false, err
 	}
@@ -353,7 +358,8 @@ func handleSourceGet(w http.ResponseWriter, r *http.Request) (interface{}, bool,
 			continue
 		}
 		if source.Type == "daemon" { // 如果是 daemon，写入状态
-			source.Status = strconv.FormatBool(Cache.Daemons[source.Name] != nil)
+			_, exists := cache.Daemon.Get(source.Name)
+			source.Status = strconv.FormatBool(exists)
 		}
 		data.Sources = append(data.Sources, source)
 	}
@@ -381,9 +387,9 @@ func handleSourceEval(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 获取 vm 实例
-	var worker *Worker
+	var worker *internal.Worker
 	select {
-	case worker = <-WorkerPool.Channels:
+	case worker = <-internal.WorkerPool.Channels:
 	default:
 		Error(w, http.StatusServiceUnavailable)
 		return
@@ -393,7 +399,7 @@ func handleSourceEval(w http.ResponseWriter, r *http.Request) {
 			Error(w, x)
 		}
 		worker.Reset()
-		WorkerPool.Channels <- worker
+		internal.WorkerPool.Channels <- worker
 	}()
 
 	// 允许最大执行的时间为 60 秒

@@ -8,7 +8,8 @@ import (
 	"net/http"
 	"os"
 
-	. "cube/internal"
+	"cube/internal"
+	"cube/internal/cache"
 	"cube/internal/config"
 	"cube/internal/handler"
 	"cube/internal/log"
@@ -21,16 +22,16 @@ var web embed.FS
 
 func init() {
 	// 初始化数据库
-	InitDb()
+	internal.InitDb()
 
 	// 初始化日志文件
 	log.Init()
 
 	// 初始化缓存
-	InitCache()
+	cache.Init(internal.Db)
 
 	// 初始化虚拟机池
-	InitWorkerPool()
+	internal.InitWorkerPool()
 
 	// 初始化路由
 	handler.InitHandle(&web)
@@ -38,13 +39,13 @@ func init() {
 
 func main() {
 	// 监控当前进程的内存和 cpu 使用率
-	go RunMonitor()
+	go internal.RunMonitor()
 
 	// 启动守护任务
-	RunDaemons("")
+	internal.RunDaemons("")
 
 	// 启动定时服务
-	RunCrontabs("")
+	internal.RunCrontabs("")
 
 	// 启动服务
 	serve()

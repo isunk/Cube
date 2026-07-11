@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"cube/internal/builtin"
+	"cube/internal/cache"
 	m "cube/internal/module"
 
 	"github.com/dop251/goja"
@@ -114,8 +115,8 @@ func NewWorker(program *goja.Program, id int) *Worker {
 	worker := Worker{id, runtime, function, make([]func(), 0), builtin.NewEventLoop(), nil}
 
 	runtime.Set("require", func(id string) (goja.Value, error) {
-		program := Cache.Modules[id]
-		if program == nil { // 如果缓存不存在，则查询数据库
+		program, exists := cache.Module.Get(id)
+		if !exists { // 如果缓存不存在，则查询数据库
 			// 获取名称、类型
 			var name, stype string
 			if strings.HasPrefix(id, "./controller/") {
@@ -174,7 +175,7 @@ func NewWorker(program *goja.Program, id int) *Worker {
 
 			// 缓存当前 module 的 program
 			// 这里不应该直接缓存 module，因为 module 依赖当前 vm 实例，在开启多个 vm 实例池的情况下，调用会错乱从而导致异常 "TypeError: Illegal runtime transition of an Object at ..."
-			Cache.Modules[id] = program
+			cache.Module.Add(id, program)
 		}
 
 		exports := runtime.NewObject()
@@ -209,7 +210,6 @@ func NewWorker(program *goja.Program, id int) *Worker {
 	ctx := builtin.Context{
 		Worker: &worker,
 		Db:     Db,
-		Cache:  Cache,
 	}
 
 	runtime.Set("$native", func(name string) (interface{}, error) {
