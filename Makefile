@@ -50,16 +50,17 @@ config:
 	# Load resources from CDN
 	if [ "$(CDN)" = "1" ]; then # Use CDN resources
 		sed -i "s#window.location.origin + \"/libs/monaco-editor/$$MONACO_EDITOR_VERSION/min/vs\"#\"/libs/monaco-editor/$$MONACO_EDITOR_VERSION/min/vs\"#g" web/editor.html # 由于这里的 URL 需要在 Service Worker 中动态获取，因此需要补充完整的域名
-		sed -i 's#"/libs/#"https://cdn.bootcdn.net/ajax/libs/#g' web/*.html
+		sed -i 's#@/#/#g; s#"/libs/#"https://cdn.bootcdn.net/ajax/libs/#g' web/*.html
 	else # Use local resources
 		# Download basic css, js, etc. resources
 		grep -hor "/libs/[^\"'\'''\'']*" ./web | grep -v "monaco-editor" | sort | uniq | while read uri
 		do
 			name=$${uri#/libs/}
+			cdn_name=$$(echo "$$name" | sed 's/@/\//g')
 			if [ -f "web/libs/$$name" ]; then
 				continue
 			fi
-			if wget --tries=5 --timeout=30 --no-check-certificate "https://cdn.bootcdn.net/ajax/libs/$$name" -P "web/libs/$$(dirname $$name)"; then
+			if wget --tries=5 --timeout=30 --no-check-certificate "https://cdn.bootcdn.net/ajax/libs/$$cdn_name" -P "web/libs/$$(dirname $$name)"; then
 				continue
 			fi
 			echo "Download failed."
@@ -68,7 +69,7 @@ config:
 		# Download monaco-editor resources
 		if [ ! -d "./web/libs/monaco-editor/$$MONACO_EDITOR_VERSION/" ]; then
 			mkdir -p "./web/libs/monaco-editor/$$MONACO_EDITOR_VERSION/"
-			wget --tries=5 --timeout=30 --no-check-certificate "https://registry.npm.taobao.org/monaco-editor/-/monaco-editor-$$MONACO_EDITOR_VERSION.tgz" || (echo "Download failed." && exit 1)
+			wget --tries=5 --timeout=30 --no-check-certificate "https://registry.npmjs.org/monaco-editor/-/monaco-editor-$$MONACO_EDITOR_VERSION.tgz" || (echo "Download failed." && exit 1)
 			tar -zxf "monaco-editor-$$MONACO_EDITOR_VERSION.tgz" -C "./web/libs/monaco-editor/$$MONACO_EDITOR_VERSION/" --strip-components 1 "package/min"
 			rm monaco-editor-$$MONACO_EDITOR_VERSION.tgz
 		fi

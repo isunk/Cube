@@ -1,86 +1,81 @@
 <template>
-    <div v-cloak style="padding: 32px; position: relative;">
-        <el-link type="primary" :underline="false" style="font-weight: 300; font-size: 1.6rem; margin-bottom: 20px; text-shadow: 1px 1px 1px #79bbff;" href="/document.html">
-            Cube
-        </el-link>
-        <el-card>
-            <el-row style="padding-bottom: 10px;">
-                <el-button :icon="Plus" @click="onDialogNew">New</el-button>
-                <el-upload :auto-upload="false" action="" :on-change="onTableImport" :show-file-list="false" accept="application/json" style="display: none;">
-                    <el-button ref="UploadRef"></el-button>
-                </el-upload>
-                <el-button-group style="padding-left: 5px;">
-                    <el-button :icon="Upload" :loading="button.upload.loading" @click="UploadClick">Import</el-button>
-                    <el-button :icon="Download" :disabled="table.selection.reversion ? table.selection.values.length >= table.pagination.count : !table.selection.values.length" @click="onTableExport">Export</el-button>
-                </el-button-group>
-                <div style="margin-left: auto; display: inline-flex;">
-                    <el-autocomplete v-model="table.search.keyword" placeholder="Enter keyword here" clearable @blur="onTableFetch(true)" :suffix-icon="Search" @select="onTableSearchSelect" :fetch-suggestions="onTableSearchSuggest" :trigger-on-focus="false">
-                        <template #prepend>
-                            <el-select v-model="table.search.type" placeholder="Select a type" clearable @change="onTableFetch(true)" style="width: 160px; background-color: var(--el-fill-color-blank);">
-                                <el-option v-for="type in Object.keys(constants.type)" :key="type" :label="capitalize(type)" :value="type">
-                                </el-option>
-                            </el-select>
-                        </template>
-                        <template #prefix>
-                            <my-tags count="1" v-model="table.search.tag" closable></my-tags>
-                        </template>
-                    </el-autocomplete>
-                </div>
-            </el-row>
-            <el-row>
-                <el-table v-loading="table.loading" :data="table.records" stripe :row-class-name="({ row: record }) => record.active ? '' : 'disabled'" @sort-change="onTableSortChange" table-layout="fixed">
-                    <el-table-column width="40">
-                        <template #header>
-                            <el-checkbox v-model="table.selection.reversion" :indeterminate="table.selection.values.length && table.selection.values.length < table.pagination.count" @change="onTableSelectAll"></el-checkbox>
-                        </template>
-                        <template #default="scope">
-                            <el-checkbox :model-value="table.selection.reversion !== table.selection.values.includes(scope.row.rowid)" @change="(value) => onTableSelect(value, scope.row.rowid)"></el-checkbox>
-                        </template>
-                    </el-table-column>
-                    <el-table-column label="Name" prop="name" sortable :show-overflow-tooltip="true">
-                        <template #default="scope">
-                            <el-button link type="primary" @click="onTableRowEdit(scope.row)">
-                                {{ scope.row.name }}
-                            </el-button>
-                        </template>
-                    </el-table-column>
-                    <el-table-column label="Type">
-                        <template #default="scope">
-                            {{ capitalize(scope.row.type) }}
-                        </template>
-                    </el-table-column>
-                    <el-table-column label="Language">
-                        <template #default="scope">
-                            {{ capitalize(scope.row.lang) }}
-                        </template>
-                    </el-table-column>
-                    <el-table-column label="Tag" show-overflow-tooltip>
-                        <template #default="scope">
-                            <my-tags count="1" v-model="scope.row.tag"></my-tags>
-                        </template>
-                    </el-table-column>
-                    <el-table-column label="Last Modified Date" prop="last_modified_date" :formatter="(row, column, value) => value?.replace(/T/, ' ')?.replace(/Z/, '')" sortable>
-                    </el-table-column>
-                    <el-table-column label="Operation">
-                        <template #default="scope">
-                            <el-switch v-model="scope.row.active" @change="onTableRowActiveSwitch(scope.row)" style="margin-right: 12px;" :disabled="scope.row.status === 'true'">
-                            </el-switch>
-                            <el-button link type="primary" @click="onTableRowCode(scope.row)" :icon="Edit" v-if="scope.row.status !== 'true'">
-                            </el-button>
-                            <el-button link type="danger" @click="onTableRowDelete(scope.row)" :icon="Delete" v-if="!scope.row.active">
-                            </el-button>
-                            <el-button link :type="scope.row.status === 'true' ? 'danger' : 'primary'" @click="onTableRowStatusSwitch(scope.row)" v-if="scope.row.type == 'daemon' && scope.row.active">
-                                <el-icon>
-                                    <component :is="scope.row.status === 'true' ? VideoPause : VideoPlay"></component>
-                                </el-icon>
-                            </el-button>
-                        </template>
-                    </el-table-column>
-                </el-table>
-                <el-pagination @size-change="onTablePageSizeChange" @current-change="onTablePageCurrentChange" :current-page="table.pagination.index" :page-sizes="table.pagination.sizes" :page-size="table.pagination.size" layout="total, sizes, prev, pager, next, jumper" :total="table.pagination.count">
-                </el-pagination>
-            </el-row>
-        </el-card>
+    <div>
+        <el-row style="padding-bottom: 10px;">
+            <el-button :icon="Plus" @click="onDialogNew">New</el-button>
+            <el-upload :auto-upload="false" action="" :on-change="onTableImport" :show-file-list="false" accept="application/json" style="display: none;">
+                <el-button ref="UploadRef"></el-button>
+            </el-upload>
+            <el-button-group style="padding-left: 5px;">
+                <el-button :icon="Upload" :loading="button.upload.loading" @click="UploadClick">Import</el-button>
+                <el-button :icon="Download" :disabled="table.selection.reversion ? table.selection.values.length >= table.pagination.count : !table.selection.values.length" @click="onTableExport">Export</el-button>
+            </el-button-group>
+            <div style="margin-left: auto; display: inline-flex;">
+                <el-autocomplete v-model="table.search.keyword" placeholder="Enter keyword here" clearable @blur="onTableFetch(true)" :suffix-icon="Search" @select="onTableSearchSelect" :fetch-suggestions="onTableSearchSuggest" :trigger-on-focus="false">
+                    <template #prepend>
+                        <el-select v-model="table.search.type" placeholder="Select a type" clearable @change="onTableFetch(true)" style="width: 160px; background-color: var(--el-fill-color-blank);">
+                            <el-option v-for="type in Object.keys(constants.type)" :key="type" :label="capitalize(type)" :value="type">
+                            </el-option>
+                        </el-select>
+                    </template>
+                    <template #prefix>
+                        <tag-group count="1" v-model="table.search.tag" closable></tag-group>
+                    </template>
+                </el-autocomplete>
+            </div>
+        </el-row>
+        <el-row>
+            <el-table v-loading="table.loading" :data="table.records" stripe :row-class-name="({ row: record }) => record.active ? '' : 'disabled'" @sort-change="onTableSortChange" table-layout="fixed">
+                <el-table-column width="40">
+                    <template #header>
+                        <el-checkbox v-model="table.selection.reversion" :indeterminate="table.selection.values.length && table.selection.values.length < table.pagination.count" @change="onTableSelectAll"></el-checkbox>
+                    </template>
+                    <template #default="scope">
+                        <el-checkbox :model-value="table.selection.reversion !== table.selection.values.includes(scope.row.rowid)" @change="(value) => onTableSelect(value, scope.row.rowid)"></el-checkbox>
+                    </template>
+                </el-table-column>
+                <el-table-column label="Name" prop="name" sortable :show-overflow-tooltip="true">
+                    <template #default="scope">
+                        <el-button link type="primary" @click="onTableRowEdit(scope.row)">
+                            {{ scope.row.name }}
+                        </el-button>
+                    </template>
+                </el-table-column>
+                <el-table-column label="Type">
+                    <template #default="scope">
+                        {{ capitalize(scope.row.type) }}
+                    </template>
+                </el-table-column>
+                <el-table-column label="Language">
+                    <template #default="scope">
+                        {{ capitalize(scope.row.lang) }}
+                    </template>
+                </el-table-column>
+                <el-table-column label="Tag" show-overflow-tooltip>
+                    <template #default="scope">
+                        <tag-group count="1" v-model="scope.row.tag"></tag-group>
+                    </template>
+                </el-table-column>
+                <el-table-column label="Last Modified Date" prop="last_modified_date" :formatter="(row, column, value) => value?.replace(/T/, ' ')?.replace(/Z/, '')" sortable>
+                </el-table-column>
+                <el-table-column label="Operation">
+                    <template #default="scope">
+                        <el-switch v-model="scope.row.active" @change="onTableRowActiveSwitch(scope.row)" style="margin-right: 12px;" :disabled="scope.row.status === 'true'">
+                        </el-switch>
+                        <el-button link type="primary" @click="onTableRowCode(scope.row)" :icon="Edit" v-if="scope.row.status !== 'true'">
+                        </el-button>
+                        <el-button link type="danger" @click="onTableRowDelete(scope.row)" :icon="Delete" v-if="!scope.row.active">
+                        </el-button>
+                        <el-button link :type="scope.row.status === 'true' ? 'danger' : 'primary'" @click="onTableRowStatusSwitch(scope.row)" v-if="scope.row.type == 'daemon' && scope.row.active">
+                            <el-icon>
+                                <component :is="scope.row.status === 'true' ? VideoPause : VideoPlay"></component>
+                            </el-icon>
+                        </el-button>
+                    </template>
+                </el-table-column>
+            </el-table>
+            <el-pagination @size-change="onTablePageSizeChange" @current-change="onTablePageCurrentChange" :current-page="table.pagination.index" :page-sizes="table.pagination.sizes" :page-size="table.pagination.size" layout="total, sizes, prev, pager, next, jumper" :total="table.pagination.count">
+            </el-pagination>
+        </el-row>
         <el-dialog v-model="dialog.visible" :title="dialog.record.rowid ? dialog.record.active ? 'View' : 'Edit' : 'New'">
             <el-form ref="FormRef" :model="dialog.record" label-position="right" label-width="96px" :rules="constants.rules" :hide-required-asterisk="dialog.record.active">
                 <el-form-item label="Type" prop="type">
@@ -129,7 +124,7 @@
                     <el-input v-model="dialog.record.cron" placeholder="For example: */5 * * * *" :disabled="dialog.record.active"></el-input>
                 </el-form-item>
                 <el-form-item label="Tag">
-                    <my-tags v-model="dialog.record.tag" :closable="!dialog.record.active" :newable="!dialog.record.active"></my-tags>
+                    <tag-group v-model="dialog.record.tag" :closable="!dialog.record.active" :newable="!dialog.record.active"></tag-group>
                 </el-form-item>
                 <el-form-item v-if="!dialog.record.active">
                     <el-button type="primary" :loading="dialog.loading" @click="onDialogSubmit(FormRef)">Submit</el-button>
@@ -220,7 +215,7 @@ export default {
                     name: [{
                         required: true,
                         message: "Name is required",
-                        trigger: "submit", // 提交表单的时候校验必填
+                        trigger: "submit",
                     }, {
                         validator: (rule, value, callback) => {
                             if (this.dialog.record.type === "module") {
@@ -271,7 +266,7 @@ export default {
             },
             dialog: {
                 record: {},
-                visiable: false,
+                visible: false,
                 loading: false,
             },
         }
@@ -341,23 +336,22 @@ export default {
                         cancelButtonText: "Overwrite",
                         type: "warning",
                     }).then(() => {
-                        upload(inputs.filter(e => !~outdated.indexOf(e.rowid))) // 跳过冲突的记录
+                        upload(inputs.filter(e => !~outdated.indexOf(e.rowid)))
                     }).catch(action => {
-                        if (action === "close") { // 取消导入操作
+                        if (action === "close") {
                             that.button.upload.loading = false
                             return
                         }
-                        upload(inputs) // 全部覆盖导入
+                        upload(inputs)
                     })
                 })
             }
             reader.readAsText(file.raw, "utf-8")
         },
         onTableExport() {
-            // 移动端浏览器无法通过 window.open 在新标签打开链接，这里使用 a 标签下载
             const a = document.createElement("a")
             a.href = `source?name=%25${this.table.search.keyword}%25&type=${this.table.search.type || ""}&tag=${encodeURIComponent(this.table.search.tag)}&${this.table.selection.reversion ? "exclude" : "include"}=${encodeURIComponent(this.table.selection.values.join(","))}&size=5000&bulk`
-            a.download = "" // 如果不设置 download 属性，移动端取消下载任务时，可能会影响当前页面的加载状态
+            a.download = ""
             a.click()
         },
         onTableSelect(checked, id) {
@@ -493,91 +487,19 @@ export default {
             this.dialog.visible = false
         },
         capitalize(text) {
-            return text.slice(0, 1).toUpperCase() + text.slice(1)
+            return text?.slice(0, 1).toUpperCase() + text?.slice(1)
         },
     },
     mounted() {
         this.onTableFetch()
     },
     components: {
-        "my-tags": {
-            template: `<div style="display: inline-flex; flex-flow: wrap; align-items: center; gap: 4px;">
-<el-tag v-if="dataset.length" v-for="e in dataset.slice(0, this.count)" :closable="closable" @close="onRemoveTag(e)">{{ e }}</el-tag>
-<el-popover v-if="dataset.length > count" placement="bottom-start" :width="0" trigger="hover">
-<template #reference>
-    <el-tag>+{{ dataset.length - count }}</el-tag>
-</template>
-<div style="display: flex; flex-wrap: wrap; gap: 4px; max-width: 400px;">
-    <el-tag v-for="e in dataset.slice(this.count)" :closable="closable" @close="onRemoveTag(e)">{{ e }}</el-tag>
-</div>
-</el-popover>
-<div v-if="newable" style="display: flex;">
-<el-input v-if="input.visible" ref="InputRef" v-model="input.value" size="small" @keyup.enter="onAddTag" @blur="onAddTag"></el-input>
-<el-button v-else size="small" @click="onNewTag">+ New Tag</el-button>
-</div>
-</div>`,
-            props: {
-                modelValue: { type: Array, default: "", },
-                count: { type: Number, default: 99, },
-                closable: { type: Boolean, default: false, },
-                newable: { type: Boolean, default: false, },
-            },
-            emits: ["update:modelValue"],
-            setup() {
-                return {
-                    InputRef: Vue.ref(),
-                }
-            },
-            computed: {
-                dataset: {
-                    get() {
-                        return this.modelValue.split(",")?.filter(i => i)
-                    },
-                    set(v) {
-                        this.$emit("update:modelValue", v.join(","))
-                    },
-                },
-            },
-            data() {
-                return {
-                    input: {
-                        value: "",
-                        visible: false,
-                    },
-                }
-            },
-            methods: {
-                onRemoveTag(tag) {
-                    this.dataset = this.dataset.filter(i => i !== tag)
-                },
-                onAddTag() {
-                    if (this.input.value && !~this.dataset.indexOf(this.input.value)) {
-                        this.dataset = [...this.dataset, this.input.value]
-                    }
-                    this.input.visible = false
-                    this.input.value = ""
-                },
-                onNewTag() {
-                    this.input.visible = true
-                    Vue.nextTick(() => {
-                        this.InputRef.input.focus()
-                    })
-                },
-            },
-        },
+        "tag-group": load("/components/TagGroup.vue"),
     },
 }
 </script>
 
 <style scoped>
-    html, body {
-        height: 100%;
-        margin: 0;
-        background-color: #f0f2f5;
-    }
-    [v-cloak] {
-        display: none;
-    }
     .el-table {
         border-top: 1px solid #dcdfe6;
     }
@@ -615,13 +537,5 @@ export default {
     }
     .el-dialog .el-select {
         max-width: 180px;
-    }
-    .el-tag {
-        max-width: 160px;
-    }
-    .el-tag .el-tag__content {            
-        overflow: hidden;
-        text-overflow: ellipsis;
-        line-height: 1rem;
     }
 </style>
