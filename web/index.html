@@ -20,13 +20,11 @@
 </head>
 
 <body v-cloak>
-    <el-menu mode="horizontal" :ellipsis="false" :default-active="menu"
-        style="position:fixed;top:0;left:0;right:0;z-index:100;background:transparent;background-image:radial-gradient(transparent 1px,#fff 1px);background-size:4px 4px;backdrop-filter:saturate(50%) blur(4px)">
-        <el-menu-item index="brand" disabled
-            style="cursor:default;pointer-events:none;opacity:1!important">
-            <span style="font-weight:300;font-size:1.6rem;text-shadow:1px 1px 1px #79bbff;color:var(--el-color-primary)">Cube</span>
+    <el-menu mode="horizontal" :ellipsis="false" :default-active="menu" style="position: fixed; top: 0; left: 0; right: 0; z-index: 100; background: transparent; background-image: radial-gradient(transparent 1px, #fff 1px); background-size: 4px 4px; backdrop-filter: saturate(50%) blur(4px);">
+        <el-menu-item index="brand" disabled style="cursor: default; pointer-events: none; opacity: 1 !important;">
+            <span style="font-weight: 300; font-size: 1.6rem; text-shadow: 1px 1px 1px #79bbff; color: var(--el-color-primary);">Cube</span>
         </el-menu-item>
-        <div style="flex:1"></div>
+        <div style="flex: 1;"></div>
         <el-menu-item index="source" @click="$router.push('/')">Source</el-menu-item>
         <el-menu-item index="database" @click="$router.push('/database')">Database</el-menu-item>
         <el-menu-item index="file" @click="$router.push('/file')">File</el-menu-item>
@@ -41,32 +39,34 @@
     <script src="/libs/vue3-sfc-loader@0.9.5/vue3-sfc-loader.min.js"></script>
     <script src="/libs/element-plus/2.10.5/index.full.min.js"></script>
     <script src="/libs/element-plus-icons-vue/2.3.1/index.iife.min.js"></script>
-
     <script>
-        const load = (() => {
+        const rimport = (src) => {
+            const map = globalThis.jsloaders || (globalThis.jsloaders = new Map())
+            if (!map.has(src)) {
+                map.set(src, new Promise((resolve, reject) => {
+                    const e = document.createElement("script")
+                    e.src = src
+                    e.addEventListener("load", () => resolve())
+                    e.onerror = () => document.body.removeChild(e) && map.delete(src) && reject()
+                    document.body.append(e)
+                }))
+            }
+            return map.get(src)
+        }
+        const cimport = (() => {
             const options = {
                 moduleCache: {
                     vue: Vue,
                     router: VueRouter,
-                    marked: () => new Promise(resolve => {
-                        if (window.marked) return resolve({ default: marked })
-                        const s = document.createElement("script")
-                        s.src = "/libs/marked/9.0.0/marked.min.js"
-                        s.onload = () => resolve({ default: marked })
-                        document.head.appendChild(s)
-                    }),
-                    mermaid: () => new Promise(resolve => {
-                        if (window.mermaid) return resolve({ default: mermaid })
-                        const s = document.createElement("script")
-                        s.src = "/libs/mermaid/11.12.0/mermaid.min.js"
-                        s.onload = () => resolve({ default: mermaid })
-                        document.head.appendChild(s)
-                    }),
+                    marked: () => new Promise(resolve => window.marked ? resolve({ default: window.marked }) : rimport("/libs/marked/9.0.0/marked.min.js").then(() => resolve({ default: window.marked }))),
+                    mermaid: () => new Promise(resolve => window.mermaid ? resolve({ default: window.mermaid }) : rimport("/libs/mermaid/11.12.0/mermaid.min.js").then(() => resolve({ default: window.mermaid }))),
+                    monaco: () => new Promise(resolve => window.monaco ? resolve({ default: window.monaco }) : rimport("/libs/monaco-editor/0.52.2/min/vs/loader.js").then(() => window.require.config({ paths: { vs: "/libs/monaco-editor/0.52.2/min/vs" } })).then(() => resolve({ default: window.monaco }))),
+                    ts: () => new Promise(resolve => window.ts ? resolve({ default: window.ts }) : rimport("/libs/typescript/5.9.2/typescript.min.js").then(() => resolve({ default: window.ts }))),
                 },
                 async getFile(url) {
                     const res = await fetch(url)
                     if (!res.ok) {
-                        throw Object.assign(new Error(res.statusText + " " + url), { res })
+                        throw Object.assign(new Error(`${res.statusText} ${url}`), { res })
                     }
                     return {
                         getContentData: (asBinary) => asBinary ? res.arrayBuffer() : res.text(),
@@ -82,26 +82,24 @@
             return (name) => Vue.defineAsyncComponent(() => window["vue3-sfc-loader"].loadModule(name, options))
         })()
 
-        const routes = [
-            { path: "/", component: load("/views/Source.vue") },
-            { path: "/database", component: load("/views/Database.vue") },
-            { path: "/file", component: load("/views/File.vue") },
-            { path: "/document", component: load("/views/Document.vue") },
-        ]
-
         const app = Vue.createApp({
             computed: {
                 menu() {
-                    return this.$route.path === "/" ? "source" : this.$route.path.substring(1)
+                    return this.$route.path.substring(1) || "source"
                 },
             },
         })
         app.use(VueRouter.createRouter({
             history: VueRouter.createWebHashHistory(),
-            routes,
+            routes: [
+                { path: "/", component: cimport("/views/Source.vue") },
+                { path: "/database", component: cimport("/views/Database.vue") },
+                { path: "/file", component: cimport("/views/File.vue") },
+                { path: "/document", component: cimport("/views/Document.vue") },
+            ],
         }))
         app.use(ElementPlus)
-        app.mount("body")
+        app.mount(document.body)
     </script>
 </body>
 
