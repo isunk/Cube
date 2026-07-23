@@ -1,13 +1,11 @@
 <template>
     <div class="doc-content" v-cloak>
-        <monaco-editor ref="monacoEditor" />
         <div v-html="htmlContent" ref="ContentRef"></div>
     </div>
 </template>
 
 <script>
-let _markedSetup = false
-
+const MonacoEditor = $import("/components/MonacoEditor.vue")
 export default {
     data() {
         return {
@@ -20,28 +18,25 @@ export default {
             return match?.[1] || "No title"
         },
         async render(markdown) {
-            const { default: marked } = await import("marked")
-            if (!_markedSetup) {
-                marked.use({
-                    renderer: {
-                        link(href, title, text) {
-                            if (/^[\w\/\-]+\.md/i.test(href)) {
-                                href = "#/document?" + href
-                            }
-                            return this.__proto__.link(href, title, text)
-                        },
-                        code(code, type, escaped) {
-                            if (type === "mermaid") {
-                                return "<div class=\"mermaid\">" + code + "</div>"
-                            }
-                            return this.__proto__.code(code, type, escaped)
-                        },
-                    },
-                })
-                _markedSetup = true
-            }
             document.title = this.toTitle(markdown)
 
+            const marked = await $import("marked")
+            marked.use({
+                renderer: {
+                    link(href, title, text) {
+                        if (/^[\w\/\-]+\.md/i.test(href)) {
+                            href = "#/document?" + href
+                        }
+                        return this.__proto__.link(href, title, text)
+                    },
+                    code(code, type, escaped) {
+                        if (type === "mermaid") {
+                            return "<div class=\"mermaid\">" + code + "</div>"
+                        }
+                        return this.__proto__.code(code, type, escaped)
+                    },
+                },
+            })
             this.htmlContent = marked.parse(markdown)
 
             await Vue.nextTick()
@@ -50,73 +45,72 @@ export default {
             this.processMermaid()
         },
         async processCodeBlocks() {
-            const editor = this.$refs.monacoEditor
-            const that = this
             const els = this.$refs.ContentRef.querySelectorAll("pre code")
             for (const e of els) {
                 const [metadata] = e.innerText.match(/^\/\/\?name=[\w\/]+&type=\w+[^\n]*\n/) || [""]
-                const content = e.textContent = e.innerText.substring(metadata.length)
-                const rows = content.split("\n").length - 1
+                const content = e.innerText.substring(metadata.length)
+                const lang = e.className.replace(/^language-/, "") || "typescript"
+                const lineCount = content.split("\n").length
+                const height = Math.min(Math.max(lineCount * 20 + 10, 60), 400) + "px"
 
-                await editor.colorize(e)
+                e.parentNode.style.display = "none"
 
-                e.before(that.createBoxLine(rows))
+                const wrapper = document.createElement("div")
+                wrapper.style.position = "relative"
+                wrapper.style.width = "100%"
+                wrapper.style.height = height
+                wrapper.style.border = "1px solid #dcdfe6"
+                e.parentNode.parentNode.insertBefore(wrapper, e.parentNode)
 
-                if (rows > 16) {
-                    e.after(that.createBtnExpand())
-                }
-
-                if (metadata) {
-                    e.after(that.createBtnAdd(content, new URL("http://0.0.0.0/?" + metadata.substring(3)).searchParams))
-                }
-            }
-        },
-        createBoxLine(count) {
-            const e = document.createElement("span")
-            e.className = "box-line"
-            for (let i = 0; i < count; i++) {
-                const l = document.createElement("span")
-                l.textContent = i + 1
-                e.appendChild(l)
-            }
-            return e
-        },
-        createBtnExpand() {
-            const e = document.createElement("span")
-            e.className = "btn-expand"
-            e.onclick = function () {
-                this.parentNode.style.maxHeight = "unset"
-                this.className = ""
-            }
-            return e
-        },
-        createBtnAdd(content, params) {
-            const that = this
-            const name = params.get("name"),
-                type = params.get("type"),
-                lang = params.get("lang") || "typescript",
-                method = params.get("method") || "",
-                url = params.get("url") || "",
-                tag = params.get("tag") || ""
-
-            const e = document.createElement("span")
-            e.className = "btn-add"
-            e.onclick = function() {
-                fetch("/source", {
-                    method: "POST",
-                    body: JSON.stringify({ name, type, lang, content, compiled: "", method, url, tag, }),
-                }).then(r => r.json()).then(r => {
-                    if (r.code === "0") {
-                        ElementPlus.ElMessage.success("Install successfully")
-                    } else {
-                        ElementPlus.ElMessage.error(r.message)
-                    }
+                const that = this
+                const app = Vue.createApp({
+                    template: `<div style="position: relative; width: 100%; height: 100%;">
+                        <span v-if="showAdd" class="btn-add" @click="onInstall"></span>
+                        <monaco-editor :modelValue="code" :language="lang" :height="height" readOnly />
+                    </div>`,
+                    data() {
+                        return {
+                            code: content,
+                            lang,
+                            height,
+                            showAdd: !!metadata,
+                        }
+                    },
+                    methods: {
+                        onInstall() {
+                            fetch("/source", {
+                                method: "POST",
+                                body: JSON.stringify({
+                                    name: that.params.get("name"),
+                                    type: that.params.get("type"),
+                                    lang: that.params.get("lang") || "typescript",
+                                    content,
+                                    compiled: "",
+                                    method: that.params.get("method") || "",
+                                    url: that.params.get("url") || "",
+                                    tag: that.params.get("tag") || "",
+                                }),
+                            }).then(r => r.json()).then(r => {
+                                if (r.code === "0") {
+                                    ElementPlus.ElMessage.success("Install successfully")
+                                } else {
+                                    ElementPlus.ElMessage.error(r.message)
+                                }
+                            })
+                        },
+                    },
+                    components: {
+                        "monaco-editor": MonacoEditor,
+                    },
                 })
+                if (metadata) {
+                    that.params = new URL("http://0.0.0.0/?" + metadata.substring(3)).searchParams
+                }
+                app.mount(wrapper)
             }
-            return e
         },
         async processMermaid() {
-            const { default: mermaid } = await import("mermaid")
+            const mermaid = await $import("mermaid")
             mermaid.initialize({
                 theme: "base",
                 themeVariables: {
@@ -196,9 +190,6 @@ export default {
                 })
         },
     },
-    components: {
-        "monaco-editor": load("/components/MonacoEditor.vue"),
-    },
     watch: {
         "$route.fullPath": {
             immediate: true,
@@ -224,46 +215,21 @@ export default {
     font-size: 17px;
     word-wrap: break-word;
 }
-pre {
-    display: flex;
-    position: relative;
-    max-height: 416px;
-}
-pre span.box-line {
-    display: flex;
-    flex-direction: column;
-    padding: 1em 0.6em;
-    text-align: right;
-    user-select: none;
-    border: 1px dashed #dcdfe6;
-    border-right: none;
-    min-width: fit-content;
-    overflow: hidden;
-}
-pre span.btn-add {
+span.btn-add {
     position: absolute;
-    right: 0px;
-    padding: 11px;
-    margin: 4px 4px;
+    top: 4px;
+    right: 18px;
+    z-index: 10;
+    width: 24px;
+    height: 24px;
     cursor: pointer;
-    background: #f1f1f1 url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 24 24"><path d="M20 17H4V5h8V3H2v16h6v2h8v-2h6v-5h-2z" fill="currentColor"></path><path d="M17 14l5-5l-1.41-1.41L18 10.17V3h-2v7.17l-2.59-2.58L12 9z" fill="currentColor"></path></svg>') no-repeat;
-    border: 3px solid #f1f1f1;
+    background: #f1f1f1 url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 24 24"><path d="M20 17H4V5h8V3H2v16h6v2h8v-2h6v-5h-2z" fill="currentColor"></path><path d="M17 14l5-5l-1.41-1.41L18 10.17V3h-2v7.17l-2.59-2.58L12 9z" fill="currentColor"></path></svg>') center/ 18px 18px no-repeat;
+    border: 1px solid #dcdfe6;
+    border-radius: 2px;
 }
-pre span.btn-expand {
-    position: absolute;
-    width: 100%;
-    bottom: 0;
-    height: 32px;
-    cursor: pointer;
-    background: linear-gradient(to top, #ffffff, rgba(0, 0, 0, 0)), url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 24 24"><path d="M16.59 8.59L12 13.17L7.41 8.59L6 10l6 6l6-6z" fill="currentColor"></path></svg>') center/ 24px 24px no-repeat;
-}
-pre:has(span.btn-expand) code {
-    overflow-x: hidden;
-}
-code {
+:not(pre) > code {
     border: 1px dashed #dcdfe6;
     padding: 0 3px;
-    overflow-y: hidden !important;
 }
 [v-cloak] {
     display: none;

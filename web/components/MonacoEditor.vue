@@ -1,40 +1,39 @@
 <template>
-    <div style="display:none"></div>
+    <div ref="container" :style="{ width: width, height: height }"></div>
 </template>
 
 <script>
-let _loading = null
-
 export default {
-    methods: {
-        async loadMonaco() {
-            if (window.monaco) return
-            if (_loading) return _loading
-            _loading = new Promise((resolve) => {
-                const prevDefine = window.define
-                const prevRequire = window.require
-                delete window.define
-                delete window.require
-                const script = document.createElement("script")
-                script.src = "/libs/monaco-editor/0.55.1/min/vs/loader.js"
-                script.onload = () => {
-                    const r = window.require
-                    window.define = prevDefine
-                    window.require = prevRequire
-                    r.config({ paths: { vs: "/libs/monaco-editor/0.55.1/min/vs" } })
-                    r(["vs/editor/editor.main"], resolve)
-                }
-                document.head.appendChild(script)
-            })
-            return _loading
-        },
-        async colorize(el) {
-            await this.loadMonaco()
-            return monaco.editor.colorizeElement(el, { theme: "vs" })
-        },
+    name: "MonacoEditor",
+    props: {
+        modelValue: { type: String, default: "" },
+        width: { type: String, default: "100%" },
+        height: { type: String, default: "180px" },
+        language: { type: String, default: "typescript" },
+        readOnly: { type: Boolean, default: false },
     },
-    mounted() {
-        this.loadMonaco()
+    emits: ["update:modelValue", "CreateEditor"],
+    setup(props, { emit }) {
+        const container = Vue.ref()
+
+        const monaco = await $import("monaco")
+        const editor = monaco.editor.create(container.value, {
+            language: props.language,
+            value: props.modelValue,
+            automaticLayout: true,
+        })
+        editor.onDidChangeModelContent(() => {
+            emit("update:modelValue", editor.getValue())
+        })
+        editor.updateOptions({ readOnly: props.readOnly ?? false })
+        Vue.watch(() => props.modelValue, (newValue, oldValue) => {
+            if (newValue !== oldValue && newValue !== editor.getValue()) {
+                editor.setValue(newValue)
+            }
+        })
+        emit("CreateEditor", editor)
+
+        return { container }
     },
 }
 </script>

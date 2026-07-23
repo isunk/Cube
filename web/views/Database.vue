@@ -1,81 +1,76 @@
 <template>
     <div>
-        <div style="padding-bottom: 10px;">
-            <el-radio-group v-model="mode" size="small">
+        <el-row>
+            <el-radio-group v-model="mode">
                 <el-radio-button value="table">Table</el-radio-button>
                 <el-radio-button value="sql">SQL</el-radio-button>
             </el-radio-group>
-        </div>
+        </el-row>
 
-        <template v-if="mode === 'table'">
-            <el-row :gutter="12">
-                <el-col :span="5">
-                    <div class="table-list">
-                        <div class="table-list-header">Tables</div>
-                        <div v-loading="tableListLoading">
-                            <div v-if="!tables.length" class="empty-hint">No tables</div>
-                            <div
-                                v-for="table in tables"
-                                :key="table"
-                                class="table-item"
-                                :class="{ active: activeTable === table }"
-                                @click="onSelectTable(table)"
-                            >
-                                <span>{{ table }}</span>
-                                <el-button link type="danger" size="small" @click.stop="onDropTable(table)">
-                                    <el-icon><Delete /></el-icon>
-                                </el-button>
-                            </div>
-                        </div>
+        <el-row :gutter="12" v-if="mode === 'table'" style="margin-top: 10px;">
+            <el-col :span="5">
+                <div v-loading="tableListLoading" style="border: 1px solid #dcdfe6; border-radius: 4px; overflow: hidden;">
+                    <div style="padding: 8px 12px; font-weight: 600; font-size: 13px; color: #606266; background: #f5f7fa; border-bottom: 1px solid #dcdfe6;">Tables</div>
+                    <div v-if="!tables.length" style="text-align: center; color: #c0c4cc; padding: 20px; font-size: 13px;">No tables</div>
+                    <div
+                        v-for="table in tables"
+                        :key="table"
+                        style="display: flex; align-items: center; justify-content: space-between; padding: 6px 12px; cursor: pointer; font-size: 13px; border-bottom: 1px solid #ebeef5;"
+                        :style="{ backgroundColor: activeTable === table ? '#ecf5ff' : '', color: activeTable === table ? 'var(--el-color-primary)' : '' }"
+                        @click="onSelectTable(table)"
+                    >
+                        <span>{{ table }}</span>
+                        <el-button link type="danger" @click.stop="onDropTable(table)">
+                            <el-icon><Delete /></el-icon>
+                        </el-button>
                     </div>
-                </el-col>
-                <el-col :span="19">
-                    <div v-if="activeTable">
-                        <div class="toolbar">
-                            <el-button :icon="Plus" @click="onRowNew" size="small">New</el-button>
-                            <el-button :icon="Delete" size="small" @click="onBatchDelete" :disabled="!checkedRows.length">Batch Delete</el-button>
-                            <el-upload :auto-upload="false" action="" :on-change="onImport" :show-file-list="false" accept="application/json" style="display: none;">
-                                <el-button ref="UploadRef"></el-button>
-                            </el-upload>
-                            <el-button-group>
-                                <el-button :icon="Upload" size="small" @click="UploadClick">Import</el-button>
-                                <el-button :icon="Download" size="small" @click="onExport" :disabled="!records.length">Export</el-button>
-                            </el-button-group>
-                            <span style="margin-left: auto; color: #909399; font-size: 13px;">Total: {{ total }}</span>
-                        </div>
-                        <el-table v-loading="loading" :data="records" stripe border style="width: 100%;" @selection-change="onSelectionChange">
-                            <el-table-column type="selection" width="40"></el-table-column>
-                            <el-table-column type="index" width="50" label="#"></el-table-column>
-                            <el-table-column v-for="col in columns" :key="col" :prop="col" :label="col" :show-overflow-tooltip="true">
-                            </el-table-column>
-                            <el-table-column label="Operation" width="100">
-                                <template #default="scope">
-                                    <el-button link type="primary" :icon="Edit" @click="onRowEdit(scope.row)"></el-button>
-                                    <el-button link type="danger" :icon="Delete" @click="onRowDelete(scope.row)"></el-button>
-                                </template>
-                            </el-table-column>
-                        </el-table>
-                    </div>
-                    <div v-else class="empty-hint" style="padding: 60px;">Select a table from the left</div>
-                </el-col>
-            </el-row>
-        </template>
+                </div>
+            </el-col>
+            <el-col :span="19">
+                <div v-if="activeTable">
+                    <el-row>
+                        <el-button :icon="Plus" @click="onRowNew">New</el-button>
+                        <el-button :icon="Delete" @click="onBatchDelete" :disabled="!checkedRows.length">Batch Delete</el-button>
+                        <el-upload :auto-upload="false" action="" :on-change="onImport" :show-file-list="false" accept="application/json" style="display: none;">
+                            <el-button ref="UploadRef"></el-button>
+                        </el-upload>
+                        <el-button-group style="padding-left: 5px;">
+                            <el-button :icon="Upload" @click="UploadClick">Import</el-button>
+                            <el-button :icon="Download" @click="onExport" :disabled="!records.length">Export</el-button>
+                        </el-button-group>
+                        <span style="margin-left: auto; color: #909399; font-size: 13px;">Total: {{ total }}</span>
+                    </el-row>
+                    <el-table v-loading="loading" :data="records" stripe @selection-change="onSelectionChange" table-layout="fixed">
+                        <el-table-column type="selection" width="40"></el-table-column>
+                        <el-table-column type="index" width="50" label="#"></el-table-column>
+                        <el-table-column v-for="col in columns" :key="col" :prop="col" :label="col" :show-overflow-tooltip="true">
+                        </el-table-column>
+                        <el-table-column label="Operation" width="100">
+                            <template #default="scope">
+                                <el-button link type="primary" :icon="Edit" @click="onRowEdit(scope.row)"></el-button>
+                                <el-button link type="danger" :icon="Delete" @click="onRowDelete(scope.row)"></el-button>
+                            </template>
+                        </el-table-column>
+                    </el-table>
+                </div>
+                <div v-else style="text-align: center; color: #c0c4cc; padding: 60px; font-size: 13px;">Select a table from the left</div>
+            </el-col>
+        </el-row>
 
-        <template v-else>
-            <el-input v-model="sql" type="textarea" :rows="4" placeholder="Enter SQL statement" clearable style="margin-bottom: 8px;">
-            </el-input>
+        <el-row v-else style="margin-top: 10px;">
+            <monaco-editor v-model="sql" language="sql" height="120px" style="margin-bottom: 8px;"></monaco-editor>
             <div style="display: flex; justify-content: flex-end; margin-bottom: 8px;">
                 <el-button type="primary" @click="onExecute" :loading="executing">Execute</el-button>
             </div>
-            <el-table v-if="columns.length" v-loading="executing" :data="records" stripe border style="width: 100%;">
+            <el-table v-if="columns.length" v-loading="executing" :data="records" stripe table-layout="fixed">
                 <el-table-column type="index" width="50" label="#"></el-table-column>
                 <el-table-column v-for="col in columns" :key="col" :prop="col" :label="col" :show-overflow-tooltip="true">
                 </el-table-column>
             </el-table>
-            <div v-if="!executing && !columns.length" class="empty-hint" style="padding: 60px;">Enter SQL and click Execute</div>
-        </template>
+            <div v-if="!executing && !columns.length" style="text-align: center; color: #c0c4cc; padding: 60px; font-size: 13px;">Enter SQL and click Execute</div>
+        </el-row>
 
-        <el-dialog v-model="dialog.visible" :title="dialog.isNew ? 'New Record' : 'Edit Record'" width="500px">
+        <el-dialog v-model="dialog.visible" :title="dialog.isNew ? 'New Record' : 'Edit Record'">
             <el-form ref="FormRef" label-position="right" label-width="100px">
                 <el-form-item v-for="col in columns" :key="col" :label="col" v-if="col !== 'rowid'">
                     <el-input v-model="dialog.record[col]" />
@@ -283,53 +278,8 @@ export default {
     mounted() {
         this.onFetchTables()
     },
+    components: {
+        "monaco-editor": $import("/components/MonacoEditor.vue"),
+    },
 }
 </script>
-
-<style scoped>
-.table-list {
-    border: 1px solid #e4e7ed;
-    border-radius: 4px;
-    overflow: hidden;
-}
-.table-list-header {
-    padding: 8px 12px;
-    font-weight: 600;
-    font-size: 13px;
-    color: #606266;
-    background: #f5f7fa;
-    border-bottom: 1px solid #e4e7ed;
-}
-.table-item {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 6px 12px;
-    cursor: pointer;
-    font-size: 13px;
-    border-bottom: 1px solid #ebeef5;
-    transition: background-color .15s;
-}
-.table-item:last-child {
-    border-bottom: none;
-}
-.table-item:hover {
-    background-color: #f5f7fa;
-}
-.table-item.active {
-    background-color: #ecf5ff;
-    color: var(--el-color-primary);
-}
-.toolbar {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding-bottom: 8px;
-}
-.empty-hint {
-    text-align: center;
-    color: #c0c4cc;
-    padding: 20px;
-    font-size: 13px;
-}
-</style>

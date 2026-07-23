@@ -1,29 +1,38 @@
 <template>
     <div>
-        <div class="toolbar">
-            <el-breadcrumb separator="/">
-                <el-breadcrumb-item @click="onNavigate('')" style="cursor: pointer;">files</el-breadcrumb-item>
-                <el-breadcrumb-item v-for="(part, idx) in pathParts" :key="idx" @click="onNavigate(pathParts.slice(0, idx + 1).join('/'))" style="cursor: pointer;">{{ part }}</el-breadcrumb-item>
-            </el-breadcrumb>
-            <div style="margin-left: auto; display: flex; gap: 8px;">
-                <el-button @click="onNewDir">New Directory</el-button>
-                <el-upload :auto-upload="false" action="" :on-change="onFileUpload" :show-file-list="false" style="display: inline-flex;">
-                    <el-button type="primary">Upload</el-button>
-                </el-upload>
+        <el-row>
+            <div style="display: flex; align-items: center;">
+                <el-breadcrumb separator="/">
+                    <el-breadcrumb-item @click="onNavigate('')" style="cursor: pointer; font-weight: 500;">~</el-breadcrumb-item>
+                    <el-breadcrumb-item v-for="(part, idx) in pathParts" :key="idx" @click="onNavigate(pathParts.slice(0, idx + 1).join('/'))" style="cursor: pointer; font-weight: 500;">{{ part }}</el-breadcrumb-item>
+                </el-breadcrumb>
             </div>
-        </div>
+            <div style="margin-left: auto; display: inline-flex;">
+                <el-button @click="onNewDir">New Directory</el-button>
+                <el-upload :auto-upload="false" action="" :on-change="onFileUpload" :show-file-list="false" style="display: none;">
+                    <el-button ref="UploadRef"></el-button>
+                </el-upload>
+                <el-button @click="UploadClick" style="margin-left: 0;">Upload</el-button>
+            </div>
+        </el-row>
 
-        <div v-loading="loading" class="file-list">
-            <div v-if="!loading && !files.length" class="empty">Empty directory</div>
-            <div v-for="file in files" :key="file.name" class="file-row" @click="onRowClick(file)">
+        <div v-loading="loading" style="margin-top: 10px;">
+            <div v-if="!loading && !files.length" style="text-align: center; color: #c0c4cc; padding: 60px; font-size: 13px;">Empty directory</div>
+            <div
+                v-for="file in files"
+                :key="file.name"
+                style="display: flex; align-items: center; padding: 10px 16px; border-bottom: 1px solid #ebeef5; cursor: pointer;"
+                :style="{ borderTop: files.indexOf(file) === 0 ? '1px solid #dcdfe6' : '', borderLeft: '1px solid #dcdfe6', borderRight: '1px solid #dcdfe6' }"
+                @click="onRowClick(file)"
+            >
                 <el-icon :size="18" :style="{ color: file.dir ? 'var(--el-color-warning)' : 'var(--el-color-info)' }">
                     <FolderOpened v-if="file.dir" />
                     <Document v-else />
                 </el-icon>
-                <span class="file-name">{{ file.name }}</span>
-                <span class="file-meta">
-                    <span class="file-size" v-if="!file.dir">{{ formatSize(file.size) }}</span>
-                    <span class="file-time">{{ file.time }}</span>
+                <span style="flex: 1; margin-left: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ file.name }}</span>
+                <span style="display: flex; align-items: center; gap: 16px; margin-right: 12px; color: #909399; font-size: 13px;">
+                    <span v-if="!file.dir" style="min-width: 60px; text-align: right;">{{ formatSize(file.size) }}</span>
+                    <span style="min-width: 140px;">{{ file.time }}</span>
                 </span>
                 <el-button link type="danger" @click.stop="onFileDelete(file)">
                     <el-icon><Delete /></el-icon>
@@ -38,8 +47,14 @@ const { ElMessage, ElMessageBox } = ElementPlus
 
 export default {
     setup() {
+        const { ref } = Vue
         const { Delete, Document, FolderOpened } = ElementPlusIconsVue
-        return { Delete, Document, FolderOpened }
+        const UploadRef = ref()
+        return {
+            Delete, Document, FolderOpened,
+            UploadRef,
+            UploadClick: () => { UploadRef.value.ref.click() },
+        }
     },
     data() {
         return {
@@ -139,56 +154,3 @@ export default {
     },
 }
 </script>
-
-<style scoped>
-.toolbar {
-    display: flex;
-    align-items: center;
-    padding-bottom: 12px;
-}
-.file-list {
-    border: 1px solid #e4e7ed;
-    border-radius: 4px;
-}
-.file-row {
-    display: flex;
-    align-items: center;
-    padding: 10px 16px;
-    border-bottom: 1px solid #ebeef5;
-    cursor: pointer;
-    transition: background-color .15s;
-}
-.file-row:last-child {
-    border-bottom: none;
-}
-.file-row:hover {
-    background-color: #f5f7fa;
-}
-.file-name {
-    flex: 1;
-    margin-left: 10px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-.file-meta {
-    display: flex;
-    align-items: center;
-    gap: 16px;
-    margin-right: 12px;
-    color: #909399;
-    font-size: 13px;
-}
-.file-size {
-    min-width: 60px;
-    text-align: right;
-}
-.file-time {
-    min-width: 140px;
-}
-.empty {
-    text-align: center;
-    color: #c0c4cc;
-    padding: 40px;
-}
-</style>

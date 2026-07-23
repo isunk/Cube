@@ -1,6 +1,6 @@
 <template>
     <div>
-        <el-row style="padding-bottom: 10px;">
+        <el-row>
             <el-button :icon="Plus" @click="onDialogNew">New</el-button>
             <el-upload :auto-upload="false" action="" :on-change="onTableImport" :show-file-list="false" accept="application/json" style="display: none;">
                 <el-button ref="UploadRef"></el-button>
@@ -23,7 +23,7 @@
                 </el-autocomplete>
             </div>
         </el-row>
-        <el-row>
+        <el-row style="margin-top: 10px;">
             <el-table v-loading="table.loading" :data="table.records" stripe :row-class-name="({ row: record }) => record.active ? '' : 'disabled'" @sort-change="onTableSortChange" table-layout="fixed">
                 <el-table-column width="40">
                     <template #header>
@@ -494,7 +494,7 @@ export default {
         this.onTableFetch()
     },
     components: {
-        "tag-group": load("/components/TagGroup.vue"),
+        "tag-group": $import("/components/TagGroup.vue"),
     },
 }
 </script>
