@@ -5,6 +5,7 @@
 <script>
 export default {
     name: "MonacoEditor",
+    emits: ["update:modelValue", "CreateEditor"],
     props: {
         modelValue: { type: String, default: "" },
         width: { type: String, default: "100%" },
@@ -12,28 +13,35 @@ export default {
         language: { type: String, default: "typescript" },
         readOnly: { type: Boolean, default: false },
     },
-    emits: ["update:modelValue", "CreateEditor"],
-    setup(props, { emit }) {
-        const container = Vue.ref()
-
+    data() {
+        return {
+            editor: undefined,
+        }
+    },
+    watch: {
+        modelValue(newValue, oldValue) {
+            if (this.editor && newValue !== oldValue && newValue !== this.editor.getValue()) {
+                this.editor.setValue(newValue)
+            }
+        },
+    },
+    async mounted() {
         const monaco = await $import("monaco")
-        const editor = monaco.editor.create(container.value, {
-            language: props.language,
-            value: props.modelValue,
+        this.editor = monaco.editor.create(this.$refs.container, {
+            language: this.language,
+            value: this.modelValue,
             automaticLayout: true,
         })
-        editor.onDidChangeModelContent(() => {
-            emit("update:modelValue", editor.getValue())
+        this.editor.onDidChangeModelContent(() => {
+            this.$emit("update:modelValue", this.editor.getValue())
         })
-        editor.updateOptions({ readOnly: props.readOnly ?? false })
-        Vue.watch(() => props.modelValue, (newValue, oldValue) => {
-            if (newValue !== oldValue && newValue !== editor.getValue()) {
-                editor.setValue(newValue)
-            }
-        })
-        emit("CreateEditor", editor)
-
-        return { container }
+        this.editor.updateOptions({ readOnly: this.readOnly ?? false })
+        this.$emit("CreateEditor", this.editor)
+    },
+    beforeUnmount() {
+        if (this.editor) {
+            this.editor.dispose()
+        }
     },
 }
 </script>
