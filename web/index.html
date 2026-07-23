@@ -40,28 +40,30 @@
     <script src="/libs/element-plus/2.10.5/index.full.min.js"></script>
     <script src="/libs/element-plus-icons-vue/2.3.1/index.iife.min.js"></script>
     <script>
-        const rimport = (src) => {
-            const map = globalThis.jsloaders || (globalThis.jsloaders = new Map())
-            if (!map.has(src)) {
-                map.set(src, new Promise((resolve, reject) => {
-                    const e = document.createElement("script")
-                    e.src = src
-                    e.addEventListener("load", () => resolve())
-                    e.onerror = () => document.body.removeChild(e) && map.delete(src) && reject()
-                    document.body.append(e)
-                }))
+        const $import = (() => {
+            const sfetch = src => {
+                const map = globalThis.jsloaders || (globalThis.jsloaders = new Map())
+                if (!map.has(src)) {
+                    map.set(src, new Promise((resolve, reject) => {
+                        const e = document.createElement("script")
+                        e.src = src
+                        e.addEventListener("load", () => resolve())
+                        e.onerror = () => document.body.removeChild(e) && map.delete(src) && reject()
+                        document.body.append(e)
+                    }))
+                }
+                return map.get(src)
             }
-            return map.get(src)
-        }
-        const cimport = (() => {
+            const modules = {
+                marked: () => sfetch("/libs/marked/9.0.0/marked.min.js"),
+                mermaid: () => sfetch("/libs/mermaid/11.12.0/mermaid.min.js"),
+                monaco: () => sfetch("/libs/monaco-editor/0.52.2/min/vs/loader.js").then(() => window.require.config({ paths: { vs: "/libs/monaco-editor/0.52.2/min/vs" } })).then(() => new Promise((resolve) => window.require(["vs/editor/editor.main"], resolve))),
+                ts: () => sfetch("/libs/typescript/5.9.2/typescript.min.js"),
+            }
             const options = {
                 moduleCache: {
                     vue: Vue,
                     router: VueRouter,
-                    marked: () => new Promise(resolve => window.marked ? resolve({ default: window.marked }) : rimport("/libs/marked/9.0.0/marked.min.js").then(() => resolve({ default: window.marked }))),
-                    mermaid: () => new Promise(resolve => window.mermaid ? resolve({ default: window.mermaid }) : rimport("/libs/mermaid/11.12.0/mermaid.min.js").then(() => resolve({ default: window.mermaid }))),
-                    monaco: () => new Promise(resolve => window.monaco ? resolve({ default: window.monaco }) : rimport("/libs/monaco-editor/0.52.2/min/vs/loader.js").then(() => window.require.config({ paths: { vs: "/libs/monaco-editor/0.52.2/min/vs" } })).then(() => window.require(["vs/editor/editor.main"], () => resolve({ default: window.monaco })))),
-                    ts: () => new Promise(resolve => window.ts ? resolve({ default: window.ts }) : rimport("/libs/typescript/5.9.2/typescript.min.js").then(() => resolve({ default: window.ts }))),
                 },
                 async getFile(url) {
                     const res = await fetch(url)
@@ -79,7 +81,15 @@
                 },
                 log: (...args) => console.log(...args),
             }
-            return (name) => Vue.defineAsyncComponent(() => window["vue3-sfc-loader"].loadModule(name, options))
+            return (name) => {
+                if (!!~name.indexOf(".vue")) {
+                    return Vue.defineAsyncComponent(() => window["vue3-sfc-loader"].loadModule(name, options))
+                }
+                if (modules[name]) {
+                    return new Promise(resolve => window[name] ? resolve(window[name]) : modules[name]().then(() => resolve(window[name])))
+                }
+                throw new Error(`unknown import: ${name}`)
+            }
         })()
 
         const app = Vue.createApp({
@@ -92,10 +102,10 @@
         app.use(VueRouter.createRouter({
             history: VueRouter.createWebHashHistory(),
             routes: [
-                { path: "/", component: cimport("/views/Source.vue") },
-                { path: "/database", component: cimport("/views/Database.vue") },
-                { path: "/file", component: cimport("/views/File.vue") },
-                { path: "/document", component: cimport("/views/Document.vue") },
+                { path: "/", component: $import("/views/Source.vue") },
+                { path: "/database", component: $import("/views/Database.vue") },
+                { path: "/file", component: $import("/views/File.vue") },
+                { path: "/document", component: $import("/views/Document.vue") },
             ],
         }))
         app.use(ElementPlus)
