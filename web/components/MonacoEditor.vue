@@ -13,11 +13,6 @@ export default {
         language: { type: String, default: "typescript" },
         readOnly: { type: Boolean, default: false },
     },
-    data() {
-        return {
-            editor: undefined,
-        }
-    },
     watch: {
         modelValue(newValue, oldValue) {
             if (this.editor && newValue !== oldValue && newValue !== this.editor.getValue()) {
@@ -25,8 +20,9 @@ export default {
             }
         },
     },
-    async mounted() {
+    async created() {
         const monaco = await $import("monaco")
+        // this.editor 是非响应式的：Vue 会深度递归劫持 `data()` 返回的对象，而 Monaco Editor 的实例极其庞大且包含循环引用，调用 `getValue()` 会触发 Vue 劫持的 getter 陷阱，撑爆主线程 CPU 导致卡死
         this.editor = monaco.editor.create(this.$refs.container, {
             language: this.language,
             value: this.modelValue,
