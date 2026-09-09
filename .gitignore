@@ -4,9 +4,12 @@ files
 .idea
 *.exe
 *.db
+*.db-shm
+*.db-wal
 *.log
 *.key
 *.crt
 *.srl
 *.csr
+gowatch.yml
 web/libs

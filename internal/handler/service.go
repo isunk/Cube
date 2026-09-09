@@ -3,6 +3,7 @@ package handler
 import (
 	"net/http"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"cube/internal"
@@ -22,6 +23,10 @@ func HandleService(w http.ResponseWriter, r *http.Request) {
 	}
 
 	source := cache.Controller.Get(name)
+	if source == nil { // controller 不存在或查询失败
+		Error(w, http.StatusNotFound)
+		return
+	}
 	if source.Method != "" && source.Method != r.Method { // 校验请求方法
 		Error(w, http.StatusMethodNotAllowed)
 		return
@@ -50,12 +55,12 @@ func HandleService(w http.ResponseWriter, r *http.Request) {
 	defer timer.Stop()
 
 	// 脚本执行完成标记
-	completed := false
+	var completed atomic.Bool
 
 	// 监听客户端是否主动取消请求
 	go func() {
-		<-r.Context().Done() // 客户端主动取消
-		if !completed {      // 如果脚本已执行结束，不再中断 goja 运行时，否则中断信号无法被触发和清除（需要 goja 运行时执行指令栈才会触发中断操作），导致回收再复用时直接抛出 "Client cancelled." 的异常
+		<-r.Context().Done()   // 客户端主动取消
+		if !completed.Load() { // 如果脚本已执行结束，不再中断 goja 运行时，否则中断信号无法被触发和清除（需要 goja 运行时执行指令栈才会触发中断操作），导致回收再复用时直接抛出 "Client cancelled." 的异常
 			worker.Interrupt("client cancelled")
 		}
 	}()
@@ -69,7 +74,7 @@ func HandleService(w http.ResponseWriter, r *http.Request) {
 	)
 
 	// 标记脚本执行完成
-	completed = true
+	completed.Store(true)
 
 	if internal.Returnless(ctx) { // 如果是 WebSocket 或 chunk 响应，不需要封装响应
 		if err != nil {

@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no"><!-- 网页的宽度自动适应手机屏幕的宽度 -->
     <title>Loading</title>
-    <link rel="stylesheet" data-name="vs/editor/editor.main" href="/libs/monaco-editor/0.55.1/min/vs/editor/editor.main.css">
+    <link rel="stylesheet" data-name="vs/editor/editor.main" href="/libs/monaco-editor@0.55.1/min/vs/editor/editor.main.css">
     <style>
         * {
             margin: 0;
@@ -24,10 +24,10 @@
         }
         #btn {
             position: fixed; bottom: 40px; right: 40px; /* 固定定位在屏幕右下角 */
-            z-index: 10; /* 置顶显示 */
+            z-index: 5; /* 高于编辑器（4），低于弹窗（6） */
             width: 40px; height: 40px; /* 固定大小为 40x40 */
             display: flex;
-            line-height: 40px;
+            align-items: center; /* 指定内部 svg 图片垂直居中展示 */
             justify-content: center;
             background-color: white;
             border-radius: 50%;
@@ -37,11 +37,59 @@
             -webkit-tap-highlight-color: transparent; /* 去除移动端点击后出现的阴影 */
         }
         #btn:active {
-            box-shadow: 0 0;
+            box-shadow: none;
             transform: scale(0.95);
         }
-        #btn svg {
-            width: 24px;
+        #dialog {
+            position: fixed;
+            z-index: 6; /* 高于主按钮（5） */
+            inset: 0;
+            background: rgba(0, 0, 0, .4);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        #dialog button {
+            width: 28px;
+            height: 28px;
+            border: none;
+            background: transparent;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 4px;
+            color: #cccccc;
+            transition: .15s;
+        }
+        #dialog button:hover {
+            background: #2a2d2e;
+        }
+        #dialog > div > div:nth-of-type(2) > div {
+            position: absolute;
+            inset: 0;
+        }
+        #dialog .console {
+            overflow: auto;
+            padding: 12px;
+            white-space: pre-wrap;
+            font-family: 'Cascadia Code', 'Consolas', monospace;
+            font-size: 13px;
+        }
+        #dialog .console .console-line {
+            color: #d4d4d4;
+        }
+        #dialog .console .console-line.debug {
+            color: #808080;
+        }
+        #dialog .console .console-line.info {
+            color: #d4d4d4;
+        }
+        #dialog .console .console-line.warn {
+            color: #dcdcaa;
+        }
+        #dialog .console .console-line.error {
+            color: #f44747;
         }
     </style>
 </head>
@@ -49,24 +97,28 @@
 <body>
     <div id="container"></div>
     <div id="btn" style="display: none;">
-        <svg style="display: none;" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 512 512"><path d="M336 112a80 80 0 0 0-160 0v96" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32"></path><rect x="96" y="208" width="320" height="272" rx="48" ry="48" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32"></rect></svg>
-        <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 512 512"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32" d="M416 128L192 384l-96-96"></path></svg>
+        <svg style="display: none;" viewBox="0 0 512 512" width="24" height="24"><path d="M336 112a80 80 0 0 0-160 0v96" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32"></path><rect x="96" y="208" width="320" height="272" rx="48" ry="48" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32"></rect></svg>
+        <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none"><polyline points="20 6 9 17 4 12"/></svg>
     </div>
-    <div id="dialog" style="z-index: 9; position: fixed; top: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, .2); display: flex; justify-content: center; align-items: center; visibility: hidden;">
-        <div style="min-width: 300px; min-height: 196px; width: 80%; height: 80%; color: #ffffffe6; background-color: #2e3033; box-shadow: 0 2px 12px 0 rgba(0, 0, 0, .2); border-radius: 8px; padding: 12px; display: flex; flex-direction: column;">
-            <div style="text-align: right;">
-                <button style="position: relative; width: 16px; height: 16px; border: 0; background: transparent; cursor: pointer; color: white;">
-                    <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 32 32"><path d="M24 9.4L22.6 8L16 14.6L9.4 8L8 9.4l6.6 6.6L8 22.6L9.4 24l6.6-6.6l6.6 6.6l1.4-1.4l-6.6-6.6L24 9.4z" fill="currentColor"></path></svg>
+    <div id="dialog" style="visibility: hidden;">
+        <div style="min-width: 300px; min-height: 200px; width: 80%; height: 80%; background: #252526; border: 1px solid #3c3c3c; border-radius: 6px; display: flex; flex-direction: column; overflow: hidden;">
+            <div style="display: flex; align-items: center; padding: 8px 12px; border-bottom: 1px solid #3c3c3c;">
+                <h3 style="flex-grow: 1; color: #cccccc;"></h3>
+                <button style="color: #f48771;">
+                    <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+                <button style="color: #4ec9b0; margin-left: 8px; display: none;">
+                    <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none"><polyline points="20 6 9 17 4 12"/></svg>
                 </button>
             </div>
-            <div style="margin-top: 10px; overflow: auto; white-space: nowrap; flex-grow: 1;"></div>
+            <div style="flex-grow: 1; position: relative;"></div>
         </div>
     </div>
-    <script src="/libs/typescript/5.9.2/typescript.min.js"></script>
-    <script src="/libs/sweetalert/2.1.2/sweetalert.min.js"></script>
-    <script src="/libs/monaco-editor/0.55.1/min/vs/loader.js"></script>
+    <script src="/libs/typescript@5.9.2/lib/typescript.min.js"></script>
+    <script src="/libs/sweetalert@2.1.2/dist/sweetalert.min.js"></script>
+    <script src="/libs/monaco-editor@0.55.1/min/vs/loader.js"></script>
     <script>
-        require.config({ paths: { "vs": window.location.origin + "/libs/monaco-editor/0.55.1/min/vs" } })
+        require.config({ paths: { "vs": window.location.origin + "/libs/monaco-editor@0.55.1/min/vs" } })
         require(["vs/editor/editor.main"], (app => app.mount.bind(app))({
             // 示例模板代码
             examples: {
@@ -80,29 +132,39 @@
 
             // 页面模型对象，用于双向绑定
             vdata: (function (data, funcs = {}) {
-                return new Proxy({
-                    ...data,
-                    $bind(property, func) { // 绑定属性的渲染方法，当对应属性被赋值时触发
-                        func.call(data, data[property]) // 初始化渲染一次
-                        funcs[property] = func
-                    },
-                }, {
-                    get: function(target, property) {
-                        return target[property]
-                    },
-                    set: function(target, property, value) {
-                        if (funcs[property]) {
-                            funcs[property].call(target, value)
-                        }
+                return new Proxy(data, {
+                    set(target, property, value) {
+                        funcs[property]?.call(target, value)
                         target[property] = value
                     },
                 })
             })({
-                readonly: false, // 源码是否只读
-                loading: true, // 是否加载中，如果是加载中则不可提交源码
+                state: "loading", // 状态：loading（加载中）、locked（已锁定，源码只读）、unmodified（未修改）、modified（已修改）
+                content: "", // 原始内容
                 broadcaster: null, // 广播频道，用于跨页面通讯，如修改 module 源码时通知其它编辑器页面实时更新依赖
-                abortController: null, // 中断控制器，用于主动中断 fetch 请求
                 version: "", // 版本号，即最后一次修改时间
+            }, {
+                state: state => {
+                    const b = document.querySelector("#btn"),
+                        [u, s] = b.children
+                    switch (state) {
+                        case "locked":
+                            b.style.display = ""
+                            u.style.display = ""
+                            s.style.display = "none"
+                            break
+                        case "unmodified":
+                            b.style.display = "none"
+                            break
+                        case "modified":
+                            b.style.display = ""
+                            u.style.display = "none"
+                            s.style.display = ""
+                            break
+                        default:
+                            break
+                    }
+                },
             }),
 
             // 请求入参
@@ -130,14 +192,14 @@
             })(),
 
             // 渲染 Monaco Editor
-            render(sourceLanguage) {
+            render(lang) {
                 const that = this,
-                    editorLanguage = { vue: "html" }[sourceLanguage] || sourceLanguage
+                    language = { vue: "html" }[lang] || lang
 
-                if (editorLanguage === "typescript") {
+                if (language === "typescript") {
                     // 初始化编辑器的编译选项
                     monaco.languages.typescript.typescriptDefaults.setCompilerOptions({
-                        allowNonTsExtensions: true, // 允许文件名（如 createModel 中的 uri）可以不包含 ".ts" 拓展名（默认为 false，则文件名必须包含 ".ts" 拓展名，否则将出现异常："Could not find source file"）
+                        allowNonTsExtensions: true, // 允许文件名（如 createModel 中的 uri）可以不包含 ".ts" 扩展名（默认为 false，则文件名必须包含 ".ts" 扩展名，否则将出现异常："Could not find source file"）
                         experimentalDecorators: false, // 由于当前已支持新的装饰器语法（typescript 5.0 及以上版本），因此需要禁用旧的实验性装饰器语法，否则将影响新语法的识别
                         downlevelIteration: true, // 允许迭代器进行迭代
                         lib: ["esnext"], // 引用的库，如果不指定则默认会包含所有的库（如 "dom"、"scripthost" 等）
@@ -178,7 +240,7 @@
                     })
 
                     // 注册广播通道，并监听自定义模块更新事件消息
-                    if (BroadcastChannel) {
+                    if (typeof BroadcastChannel !== "undefined") {
                         that.broadcaster = new BroadcastChannel("cube")
                         that.broadcaster.onmessage = function({ data }) {
                             if (data.action === "update" && data.type === "module") {
@@ -206,9 +268,9 @@
 
                 // 创建 editor
                 const editor = monaco.editor.create(document.querySelector("#container"), {
-                    language: editorLanguage,
+                    language,
                     theme: "vs-dark",
-                    model: monaco.editor.createModel(that.examples[that.input.type] || that.examples[sourceLanguage] || "", editorLanguage, new monaco.Uri("noname")),
+                    model: monaco.editor.createModel(that.examples[that.input.type] || that.examples[lang] || "", language, new monaco.Uri("noname")),
                     options: {
                         selectOnLineNumbers: true,
                         roundedSelection: false,
@@ -236,17 +298,18 @@
 
                 // 注册事件以及按键命令
                 editor.onDidFocusEditorText(() => {
-                    if (that.vdata.readonly) {
-                        document.activeElement.blur() // 防止在只读模式下，移动端点击编辑框时弹出软键盘
+                    if (that.vdata.state === "locked") {
+                        document.activeElement.blur()
                     }
                 })
 
-                if (editorLanguage === "typescript") {
-                    // 注册弹窗关闭事件
-                    document.querySelector("#dialog > div > div > button").onclick = function() {
-                        this.parentNode.parentNode.parentNode.style.visibility = "hidden"
-                        that.abortController?.abort() // 取消请求
+                editor.onDidChangeModelContent(() => {
+                    if (that.vdata.state !== "loading") {
+                        that.vdata.state = editor.getValue() !== that.content ? "modified" : "unmodified"
                     }
+                })
+
+                if (language === "typescript") {
                     // 注册命令
                     editor.addAction({
                         id: "run",
@@ -255,15 +318,69 @@
                         contextMenuGroupId: "navigation",
                         contextMenuOrder: 3,
                         run() {
-                            that.dialog((p) => {
-                                const { signal } = that.abortController = new AbortController()
-                                fetch("source", {
-                                    method: "EVAL",
-                                    body: that.compile(editor.getValue(), that.input.name),
-                                    signal,
-                                }).then(r => r.json()).then(({ data, message, }) => {
-                                    p(data?.logs || [["", new Date().toLocaleTimeString() + ".", message]])
-                                })
+                            const controller = new AbortController() // 中断控制器，用于主动中断 fetch 请求
+                            that.dialog({
+                                title: "Run",
+                                mount: (c) => {
+                                    const container = c.appendChild(Object.assign(document.createElement("div"), { className: "console" })),
+                                        now = () => new Date().toISOString(),
+                                        // 输出日志信息对象数组，每一条为 { datetime, level, message }，level 决定展示颜色（对应 console.log/debug/info/warn/error）
+                                        print = (...infos) => {
+                                            if (!container.isConnected) { // 弹窗已关闭，容器已移除时忽略写入
+                                                return
+                                            }
+                                            for (const { datetime, level, message } of infos) {
+                                                const msg = (datetime ? "[" + String(datetime).replace(/T/, " ").replace(/Z/, "") + "] " : "") + message
+                                                if (msg) {
+                                                    container.appendChild(Object.assign(document.createElement("div"), {
+                                                        className: "console-line" + (level ? " " + level : ""),
+                                                        innerText: msg,
+                                                    }))
+                                                }
+                                            }
+                                        }
+                                    fetch("source", {
+                                        method: "EVAL",
+                                        body: that.compile(editor.getValue(), that.input.name),
+                                        signal: controller.signal,
+                                    }).then(async r => {
+                                        if (!(r.headers.get("content-type") || "").includes("event-stream")) { // 非流式响应（如编译失败），读取 JSON 错误信息
+                                            const { message } = await r.json().catch(() => ({}))
+                                            print({ datetime: now(), level: "error", message: message || r.statusText })
+                                            return
+                                        }
+                                        // 流式读取脚本执行的日志，实现非阻塞式运行
+                                        const reader = r.body.getReader(),
+                                            decoder = new TextDecoder()
+                                        let buffer = ""
+                                        while (true) {
+                                            const { done, value } = await reader.read()
+                                            if (done) {
+                                                break
+                                            }
+                                            buffer += decoder.decode(value, { stream: true })
+                                            let index
+                                            while ((index = buffer.indexOf("\n")) >= 0) { // 按行解析 NDJSON 数据
+                                                const line = buffer.slice(0, index).trim()
+                                                buffer = buffer.slice(index + 1)
+                                                if (!line) {
+                                                    continue
+                                                }
+                                                const chunk = JSON.parse(line)
+                                                if (chunk.level && "message" in chunk) { // 单条日志信息对象
+                                                    print(chunk)
+                                                }
+                                            }
+                                        }
+                                    }).catch(e => {
+                                        if (e.name !== "AbortError") { // 主动中断请求时忽略异常
+                                            print({ datetime: now(), level: "error", message: e.message })
+                                        }
+                                    })
+                                },
+                                cancel: () => {
+                                    controller.abort()
+                                },
                             })
                         },
                     })
@@ -306,38 +423,61 @@
                     const keyCode = e.keyCode || e.which || e.charCode,
                         ctrlKey = e.ctrlKey || e.metaKey
                     if (ctrlKey && keyCode === 83) { // Ctrl + S
-                        if (this.vdata.readonly || this.vdata.loading) { // 如果没有加载完禁止保存提交，防止被覆盖
+                        if (this.vdata.state === "loading" || this.vdata.state === "locked") {
                             return
                         }
-                        this.vdata.loading = true
-                        const content = editor.getValue(),
-                            compiled = editor.getModel().getLanguageId() !== "typescript" ? "" : this.compile(content, this.input.name)
-                        this.submit(content, compiled).finally(() => {
-                            this.vdata.loading = false
-                        })
+                        this.onSourceSubmit(editor, editor.getValue())
                         return false
                     }
                 }
             },
 
-            // 注册保存按钮的图标状态和点击事件
+            // 注册保存按钮点击事件
             setBtnClick(editor) {
-                const b = document.querySelector("#btn"),
-                    [u, s] = b.children
-                // 绑定 vdata 属性 readonly 到按钮状态图标的绑定
-                this.vdata.$bind("readonly", function (readonly) {
-                    [u.style.display, s.style.display] = ["", "none"].sort((a, b) => a.localeCompare(b) - 1 - !readonly)
-                })
-                // 注册按钮点击事件
-                b.onclick = () => {
-                    if (this.vdata.readonly) { // 已锁定
-                        // 解锁
-                        this.vdata.readonly = false
-                        editor.updateOptions({ readOnly: false, })
+                document.querySelector("#btn").onclick = () => {
+                    if (this.vdata.state === "locked") {
+                        editor.updateOptions({ readOnly: false })
+                        this.vdata.state = "unmodified"
                         return
                     }
-                    document.onkeydown({ ctrlKey: true, keyCode: 83, }) // 触发保存事件
+                    if (editor.getValue() === this.content) {
+                        return
+                    }
+                    this.onSourceSubmit(editor, editor.getValue())
                 }
+            },
+
+            // 执行保存：内容不一致时拉起差异对比弹窗，确认后才提交
+            onSourceSubmit(editor, content) {
+                if (content === this.content) {
+                    return
+                }
+
+                // 内容不一致时，拉起差异对比弹窗，确认后才提交
+                this.dialog({
+                    title: "Review Changes",
+                    mount: (d) => {
+                        const container = d.appendChild(document.createElement("div")),
+                            lang = editor.getModel().getLanguageId(),
+                            e = monaco.editor.createDiffEditor(container, {
+                                theme: "vs-dark",
+                                automaticLayout: true,
+                                readOnly: true,
+                                ignoreTrimWhitespace: false, // 禁止忽略行首和行末的空格
+                            }),
+                            original = monaco.editor.createModel(this.content, lang),
+                            modified = monaco.editor.createModel(content, lang)
+                        e.setModel({ original, modified, })
+                        // 这里没有通过回调在关闭弹窗时释放资源（`return () => { e.dispose(); original.dispose(); modified.dispose(); }`），是因为 Monaco Editor 在高版本（＞ 0.49.*）中存在冲突：先创建 editor，再创建和释放 diff editor 时，原 editor（例如鼠标右键拉起菜单时）会出现异常："InstantiationService has been disposed"，详见 https://github.com/microsoft/monaco-editor/issues/4612
+                    },
+                    confirm: () => {
+                        const compiled = editor.getModel().getLanguageId() !== "typescript" ? "" : this.compile(content, this.input.name)
+                        this.submit(content, compiled)
+                            .finally(() => {
+                                this.vdata.state = editor.getValue() !== this.content ? "modified" : "unmodified"
+                            })
+                    },
+                })
             },
 
             // 编译
@@ -370,9 +510,10 @@
                     }),
                 }).then(r => r.json()).then(r => {
                     if (r.code === "0") {
-                        // 更新版本号
+                        // 更新版本号和原始内容快照
                         this.vdata.version = r.data.last_modified_date
-                        this.alert("Saved successfully", "success")
+                        this.content = content
+                        swal("Saved succeeded", "", "success")
                         // 如果是 module 类型，则发送广播消息，通知其它页面更新依赖
                         this.broadcaster && this.input.type === "module" && this.broadcaster.postMessage({
                             action: "update",
@@ -382,50 +523,61 @@
                         return
                     }
                     if (r.message === "source version conflict") {
-                        return swal("Source version is conflict, continue to submit?", {
+                        return swal({
+                            title: "Source version is conflict, continue to submit?",
                             buttons: {
                                 cancel: true,
-                                submit: true,
+                                confirm: true,
                             },
                         }).then(value => value && this.submit(content, compiled, ""))
                     }
                     throw new Error(r.message)
                 }).catch(e => {
-                    this.alert(e.message, "error")
+                    swal(e.message, "", "error")
                 })
             },
 
-            // 提示
-            alert(message, level = "warning") {
-                swal(message, "", level)
-                if (level === "error") { // 如果是 error 则抛出异常并停止当前程序运行
-                    throw message
+            // 弹框（title 标题、cancel 取消回调、confirm 确认回调、mount 内容渲染回调，接收内容容器，返回清理函数；容器每次拉起动态创建，关闭时移除）
+            dialog(options) {
+                const d = document.querySelector("#dialog"),
+                    [t, c, s] = d.querySelector("div > div > div:first-of-type").children,
+                    b = d.querySelector("div > div > div:nth-of-type(2)")
+                if (d.style.visibility === "visible") { // 弹窗已打开时忽略重复拉起，避免泄漏
+                    return
                 }
-            },
-
-            // 弹框提示
-            dialog(fn) {
-                const e = document.querySelector("#dialog"),
-                    c = e.querySelector("div > div:nth-child(2)")
-                c.innerText = ""
-                c.scrollTo(0, 0) // 滚动条复位
-                e.style.visibility = "visible"
-                fn((rows) => {
-                    c.innerText = rows.map(([level, time, ...data]) => "[" + time.replace(/^.+T|\+.+$/g, "").padEnd(12, "0") + "] " + data.join(" ")).join("\n") || ""
-                })
+                // 渲染弹窗主体
+                const unmount = options?.mount?.(b),
+                    close = () => {
+                        unmount?.()
+                        b.replaceChildren() // 移除动态创建的容器
+                        d.style.visibility = "hidden"
+                    }
+                // 渲染弹窗头部
+                t.innerText = options?.title ?? ""
+                c.onclick = () => {
+                    options?.cancel?.()
+                    close()
+                }
+                s.style.display = options?.confirm ? "" : "none"
+                s.onclick = () => {
+                    options?.confirm?.()
+                    close()
+                }
+                // 展示弹窗
+                d.style.visibility = "visible"
             },
 
             // 初始化
             async mount() {
                 if (!this.input.name) {
-                    this.alert("name is required", "error")
+                    swal("name is required", "", "error")
                     return
                 }
 
                 // 根据 name 和 type 查询 source
                 const source = (await fetch(`source?name=${this.input.name}&type=${this.input.type}&content`).then(r => r.json()).then(r => r.data.sources) || []).pop()
                 if (!source) {
-                    this.alert(`${this.input.type} "${this.input.name}" does not existed`, "error")
+                    swal(`${this.input.type} "${this.input.name}" does not exist`, "", "error")
                     return
                 }
 
@@ -437,13 +589,13 @@
 
                 const editor = this.render(source.lang)
                 if (!!source.content || !this.input.example) {
-                    editor.setValue(source.content || "")
+                    editor.setValue(this.content = (source.content || ""))
                     this.setEditorFocus(editor, this.input.selection) // 光标跳转至指定代码位置
-                    this.vdata.readonly = true
+                    this.vdata.state = "locked"
                     editor.updateOptions({ readOnly: true, })
+                    return
                 }
-                this.vdata.loading = false
-                document.querySelector("#btn").style.removeProperty("display")
+                this.vdata.state = this.content !== editor.getValue() ? "modified" : "unmodified"
             },
         }))
     </script>

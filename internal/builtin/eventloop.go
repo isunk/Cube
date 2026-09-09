@@ -48,30 +48,41 @@ func init() {
 //#region 事件循环
 
 type EventLoop struct {
-	tasks      chan func()      // 宏任务队列，如 setTimeout、setInterval、Promise 中的主方法
-	microtasks chan func()      // 微任务队列，如 Promise 中的 resolve 和 reject
-	count      int              // 计数器
-	interrupt  chan interface{} // 中断信号，用于中断事件循环
+	tasks      chan func() error        // 宏任务队列，如 setTimeout、setInterval、Promise 中的主方法
+	microtasks chan func() error        // 微任务队列，如 Promise 中的 resolve 和 reject
+	count      int                      // 计数器
+	interrupt  chan interface{}         // 中断信号，用于中断事件循环
+	rejections map[*goja.Promise]string // 未被 .catch/.then 捕获的 Promise rejection，由 tracker 在 leave 阶段收集
 }
 
 func (l *EventLoop) Run(main func() (goja.Value, error)) (goja.Value, error) {
 	// 执行主线程上的同步任务
 	value, err := main()
 
-	// 执行任务队列中的异步任务
+	// 排空 leave 阶段收集的 unhandled rejection（main 内 goja 已排空 jobQueue），主线程 err 优先，仅在为空时填充首个异步异常
+	if e := l.DrainRejections(); e != "" && err == nil {
+		err = errors.New(e)
+	}
 L:
 	for l.count > 0 {
 		select {
 		case <-l.interrupt:
 			break L
 		case microtask := <-l.microtasks: // 优先执行所有的微任务
-			microtask()
+			if e := microtask(); e != nil && err == nil {
+				err = e
+			}
 		case task := <-l.tasks:
-			task()
+			if e := task(); e != nil && err == nil {
+				err = e
+			}
+		}
+		// 异步任务执行后可能触发新的 goja jobQueue（Promise 链），同样排空
+		if e := l.DrainRejections(); e != "" && err == nil {
+			err = errors.New(e)
 		}
 	}
 
-	// 返回主线程上的同步任务的结果
 	return value, err
 }
 
@@ -92,6 +103,31 @@ func (l *EventLoop) Reset() {
 	for len(l.interrupt) > 0 {
 		<-l.interrupt
 	}
+	l.rejections = nil
+}
+
+// TrackRejection 由 goja Promise rejection tracker 在 Promise 被 reject 且无 handler 时调用。
+func (l *EventLoop) TrackRejection(p *goja.Promise, reason string) {
+	if l.rejections == nil {
+		l.rejections = make(map[*goja.Promise]string)
+	}
+	l.rejections[p] = reason
+}
+
+// UntrackRejection 在后续添加 rejection handler（如 .catch）时调用，标记该 rejection 已被处理。
+func (l *EventLoop) UntrackRejection(p *goja.Promise) {
+	if l.rejections != nil {
+		delete(l.rejections, p)
+	}
+}
+
+// DrainRejections 取出并清空首个 unhandled rejection 的原因，无则返回空串。
+func (l *EventLoop) DrainRejections() string {
+	for _, reason := range l.rejections {
+		l.rejections = make(map[*goja.Promise]string)
+		return reason
+	}
+	return ""
 }
 
 func (l *EventLoop) NewEventTaskTrigger() *EventTaskTrigger {
@@ -137,8 +173,9 @@ func (l *EventLoop) NewTimeoutOrInterval(call goja.FunctionCall, isInterval bool
 				case <-i.ticker.C:
 					// 定时将回调函数加入宏任务队列中
 					if !trigger.IsCancelled() {
-						trigger.AddTask(func() {
-							fn(nil, params...)
+						trigger.AddTask(func() error {
+							_, err := fn(nil, params...)
+							return err
 						})
 					}
 				}
@@ -151,10 +188,12 @@ func (l *EventLoop) NewTimeoutOrInterval(call goja.FunctionCall, isInterval bool
 	return &Timeout{
 		trigger,
 		time.AfterFunc(delay, func() {
-			trigger.AddTask(func() {
+			trigger.AddTask(func() error {
 				if trigger.Cancel() {
-					fn(nil, params...)
+					_, err := fn(nil, params...)
+					return err
 				}
+				return nil
 			})
 		}),
 	}, nil
@@ -162,8 +201,8 @@ func (l *EventLoop) NewTimeoutOrInterval(call goja.FunctionCall, isInterval bool
 
 func NewEventLoop() *EventLoop {
 	return &EventLoop{
-		tasks:      make(chan func(), 10),
-		microtasks: make(chan func(), 10),
+		tasks:      make(chan func() error, 10),
+		microtasks: make(chan func() error, 10),
 		interrupt:  make(chan interface{}, 1),
 	}
 }
@@ -177,11 +216,11 @@ type EventTaskTrigger struct {
 	loop      *EventLoop
 }
 
-func (t *EventTaskTrigger) AddTask(fn func()) {
+func (t *EventTaskTrigger) AddTask(fn func() error) {
 	t.loop.tasks <- fn
 }
 
-func (t *EventTaskTrigger) AddMicroTask(fn func()) {
+func (t *EventTaskTrigger) AddMicroTask(fn func() error) {
 	t.loop.microtasks <- fn
 }
 

@@ -40,45 +40,50 @@ func (s *EventSubscriber) Cancel() {
 var bus EventBus
 
 type EventBus struct {
-	sync.RWMutex
+	sync.Mutex
 	subscribers map[string][]*EventSubscriber
 }
 
 func (b *EventBus) subscribe(topic string, s *EventSubscriber) {
-	b.RLock()
-
+	b.Lock()
+	defer b.Unlock()
 	if b.subscribers == nil {
 		b.subscribers = make(map[string][]*EventSubscriber)
 	}
-	if subscribers, found := b.subscribers[topic]; found {
-		b.subscribers[topic] = append(subscribers, s)
-	} else {
-		b.subscribers[topic] = append([]*EventSubscriber{}, s)
-	}
-
-	b.RUnlock()
+	b.subscribers[topic] = append(b.subscribers[topic], s)
 }
 
 func (b *EventBus) emit(topic string, data interface{}) {
-	b.RLock()
-
-	if subscribers, found := b.subscribers[topic]; found {
-		// 虽然 go func() 可以避免阻塞发布者，但这里不使用该方式，如果需要同时发送大量的事件，这里会出现丢失
-		i := 0
-		for _, s := range subscribers {
-			if !s.trigger.IsCancelled() {
-				select {
-				case <-s.stop: // 这里不能简单的直接发送数据，消费者和生产者可能位于不同的线程，closed 不是线程安全的，因此这里优先监听 stop 通道的关闭事件，如果已关闭则不发送数据
-				case s.data <- data: // 发送数据
-					subscribers[i] = s // 通过位移法删除已关闭的通道
-					i += 1
-				}
-			}
-		}
-		b.subscribers[topic] = subscribers[:i] // 通过位移法删除已关闭的通道
+	b.Lock()
+	subscribers, found := b.subscribers[topic]
+	if !found {
+		b.Unlock()
+		return
 	}
+	i := 0
+	for _, s := range subscribers {
+		if s.trigger.IsCancelled() {
+			continue
+		}
+		select {
+		case <-s.stop:
+			continue
+		default:
+			subscribers[i] = s
+			i++
+		}
+	}
+	b.subscribers[topic] = subscribers[:i]                        // 通过位移法删除已关闭的通道
+	active := append([]*EventSubscriber(nil), subscribers[:i]...) // 快照活跃订阅者
+	b.Unlock()
 
-	b.RUnlock()
+	// 锁外阻塞发送，保证事件送达，同时避免慢消费者阻塞整个 bus（其他 topic 的订阅/取消不受影响）
+	for _, s := range active {
+		select {
+		case <-s.stop: // 消费者在发送前已关闭，跳过
+		case s.data <- data: // 发送数据
+		}
+	}
 }
 
 //#endregion
@@ -133,8 +138,9 @@ func (c *EventClient) On(call goja.FunctionCall) goja.Value { // 见 goja.Runtim
 					s.Cancel()
 					break L
 				}
-				s.trigger.AddTask(func() {
-					fn(nil, runtime.ToValue(data))
+				s.trigger.AddTask(func() error {
+					_, err := fn(nil, runtime.ToValue(data))
+					return err
 				})
 			}
 		}

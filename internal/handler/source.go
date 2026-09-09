@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"regexp"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"cube/internal"
@@ -16,6 +18,13 @@ import (
 	"cube/internal/util"
 
 	"github.com/dop251/goja"
+)
+
+var (
+	REGEX_SOURCE_TYPE_ENUM  = regexp.MustCompile(`^(module|controller|daemon|crontab|template|resource)$`) // 源码类型枚举值
+	REGEX_MODULE_NAME       = regexp.MustCompile(`^(node_modules/)?\w{2,32}$`)                             // 模块名（可选 node_modules/ 前缀，2-32 位 word）
+	REGEX_SOURCE_PLAIN_NAME = regexp.MustCompile(`^\w{2,32}$`)                                             // 非 module 类型源码的普通名称（2-32 位 word）
+	REGEX_SOURCE_SORT       = regexp.MustCompile(`^(rowid|name|last_modified_date) (asc|desc)$`)           // 源码排序条件
 )
 
 func HandleSource(w http.ResponseWriter, r *http.Request) {
@@ -60,18 +69,17 @@ func handleSourcePost(r *http.Request) error {
 		return err
 	}
 
-	// 校验类型
-	if ok, _ := regexp.MatchString("^(module|controller|daemon|crontab|template|resource)$", source.Type); !ok {
-		return errors.New("type must be module, controller, daemon, crontab, template or resource")
+	// 校验类型与名称
+	if err := util.ValidateString(source.Type, REGEX_SOURCE_TYPE_ENUM, "type must be module, controller, daemon, crontab, template or resource"); err != nil {
+		return err
 	}
-	// 校验名称
 	if source.Type == "module" {
-		if ok, _ := regexp.MatchString("^(node_modules/)?\\w{2,32}$", source.Name); !ok {
-			return errors.New("name is required, it must be a string that matches /(node_modules/)?[A-Za-z0-9_]{2,32}/")
+		if err := util.ValidateString(source.Name, REGEX_MODULE_NAME, "name is required, it must be a string that matches /(node_modules/)?[A-Za-z0-9_]{2,32}/"); err != nil {
+			return err
 		}
 	} else {
-		if ok, _ := regexp.MatchString("^\\w{2,32}$", source.Name); !ok {
-			return errors.New("name is required, it must be a string that matches /[A-Za-z0-9_]{2,32}/")
+		if err := util.ValidateString(source.Name, REGEX_SOURCE_PLAIN_NAME, "name is required, it must be a string that matches /[A-Za-z0-9_]{2,32}/"); err != nil {
+			return err
 		}
 	}
 	// 校验 active 必须为 false，不支持在创建过程中直接激活
@@ -97,7 +105,10 @@ func handleSourcePost(r *http.Request) error {
 	// 校验 name 和 type 不能重复
 	{
 		var count int
-		if internal.Db.QueryRow("select count(1) from source where name = ? and type = ?", source.Name, source.Type).Scan(&count); count > 0 {
+		if err := internal.Db.QueryRow("select count(1) from source where name = ? and type = ?", source.Name, source.Type).Scan(&count); err != nil {
+			return err
+		}
+		if count > 0 {
 			return errors.New("source already exists")
 		}
 	}
@@ -166,9 +177,7 @@ func handleSourceDelete(r *http.Request) error {
 
 	// 删除路由
 	if stype == "controller" {
-		// 需要提供一个删除路由的方法
-		// 暂时通过重新初始化路由来处理
-		cache.Route.Remove(name)
+		cache.Route.Remove(name) // 直接删除该 controller 的路由
 	}
 
 	return nil
@@ -196,12 +205,16 @@ func handleSourcePut(r *http.Request) (interface{}, error) {
 			return nil, err
 		}
 		if count > 0 {
-			return nil, errors.New("url already existed")
+			return nil, errors.New("url already exists")
 		}
 	}
 	// 校验 cron 表达式
 	if cron != nil && stype == "crontab" {
-		if _, err := util.ParseCron(cron.(string)); err != nil {
+		c, ok := cron.(string)
+		if !ok {
+			return nil, errors.New("cron must be a string")
+		}
+		if _, err := util.ParseCron(c); err != nil {
 			return nil, err
 		}
 	}
@@ -212,7 +225,7 @@ func handleSourcePut(r *http.Request) (interface{}, error) {
 			return nil, err
 		}
 		if rdate == "" {
-			return nil, errors.New("source does not existed")
+			return nil, errors.New("source does not exist")
 		}
 		if mdate != strings.Replace(strings.Replace(rdate, "T", " ", 1), "Z", "", 1) {
 			return nil, errors.New("source version conflict")
@@ -322,7 +335,7 @@ func handleSourceGet(w http.ResponseWriter, r *http.Request) (interface{}, bool,
 	}
 	// 初始化排序条件
 	orders := "rowid desc"
-	if ok, _ := regexp.MatchString("^(rowid|name|last_modified_date) (asc|desc)$", sort); ok {
+	if REGEX_SOURCE_SORT.MatchString(sort) {
 		orders = sort
 	}
 
@@ -394,12 +407,33 @@ func handleSourceEval(w http.ResponseWriter, r *http.Request) {
 		Error(w, http.StatusServiceUnavailable)
 		return
 	}
+
+	// 复用 service 正式接口的上下文（支持 Write、Flush 流式输出，与 controller 中的 ctx.flush() 一致）
+	ctx := internal.NewServiceContext(r, w, nil, nil)
+
+	// 流式输出：每行推送一个 JSON 对象（NDJSON），返回是否写入成功
+	push := func(v interface{}) bool {
+		data, err := json.Marshal(v)
+		if err != nil {
+			return false
+		}
+		data = append(data, '\n')
+		if _, err := ctx.Write(data); err != nil {
+			return false
+		}
+		return ctx.Flush() == nil
+	}
+
 	defer func() {
-		if x := recover(); x != nil {
-			Error(w, x)
+		if x := recover(); x != nil { // 从内部异常（如执行 crypto module 的原生方法时出现的 panic 异常）中恢复执行，防止服务端因异常而导致接口 pending
+			push(map[string]interface{}{
+				"datetime": time.Now().Format(time.RFC3339),
+				"level":    "error",
+				"message":  fmt.Sprint(x),
+			})
 		}
 		worker.Reset()
-		internal.WorkerPool.Channels <- worker
+		internal.WorkerPool.Channels <- worker // 归还实例
 	}()
 
 	// 允许最大执行的时间为 60 秒
@@ -409,44 +443,88 @@ func handleSourceEval(w http.ResponseWriter, r *http.Request) {
 	defer timer.Stop()
 
 	// 脚本执行完成标记
-	completed := false
+	var completed atomic.Bool
 
 	// 监听客户端是否主动取消请求
 	go func() {
-		<-r.Context().Done() // 客户端主动取消
-		if !completed {      // 如果脚本已执行结束，不再中断 goja 运行时，否则中断信号无法被触发和清除（需要 goja 运行时执行指令栈才会触发中断操作），导致回收再复用时直接抛出 "Client cancelled." 的异常
+		<-r.Context().Done()   // 客户端主动取消
+		if !completed.Load() { // 如果脚本已执行结束，不再中断 goja 运行时，否则中断信号无法被触发和清除（需要 goja 运行时执行指令栈才会触发中断操作），导致回收再复用时直接抛出 "Client cancelled." 的异常
 			worker.Interrupt("client cancelled")
 		}
 	}()
 
-	// 编译
-	entry, _ := worker.Runtime().RunString(strings.Join([]string{
+	// eval 接口始终为流式返回，仅推送日志帧
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("X-Accel-Buffering", "no") // 禁用反向代理（nginx 等）对响应的缓冲，保证日志实时推送
+
+	// 编译：脚本直接拼接进 IIFE，console 使用 worker 全局注册的 ConsoleClient（eval 期间经 worker.SetLogger 重定向到客户端）
+	entry, err := worker.Runtime().RunString(strings.Join([]string{
 		"(function () {",
-		"const console = { __logs__: [], log: function(...args) { this.__logs__.push(['log', new Date(), ...args]) }, };",
 		script,
-		";return { logs: console.__logs__, };",
 		"})",
 	}, "\n"))
-	function, _ := goja.AssertFunction(entry)
+	if err != nil {
+		push(map[string]interface{}{
+			"datetime": time.Now().Format(time.RFC3339),
+			"level":    "error",
+			"message":  err.Error(),
+		})
+		return
+	}
+	function, ok := goja.AssertFunction(entry)
+	if !ok {
+		push(map[string]interface{}{
+			"datetime": time.Now().Format(time.RFC3339),
+			"level":    "error",
+			"message":  "eval script is not callable",
+		})
+		return
+	}
+
+	// 日志重定向目标（脚本中的 console.log 经全局 ConsoleClient 实时推送到客户端，worker.Reset 时清除）
+	worker.SetLogger(func(level string, args ...goja.Value) {
+		parts := make([]string, 0, len(args))
+		for _, a := range args {
+			if a == goja.Undefined() { // 保持 undefined 语义，避免与 null 混淆
+				parts = append(parts, "undefined")
+				continue
+			}
+			if v, e := util.ExportGojaValue(a); e == nil {
+				if s, ok := v.(string); ok { // 字符串原样展示，其他类型 JSON 序列化
+					parts = append(parts, s)
+					continue
+				}
+				if b, e := json.Marshal(v); e == nil {
+					parts = append(parts, string(b))
+				} else {
+					parts = append(parts, fmt.Sprint(v))
+				}
+			} else {
+				parts = append(parts, a.String())
+			}
+		}
+		push(map[string]interface{}{
+			"datetime": time.Now().Format(time.RFC3339),
+			"level":    level,
+			"message":  strings.Join(parts, " "),
+		})
+	})
 
 	// 执行
-	value, err := worker.EventLoop().Run(func() (goja.Value, error) {
+	_, err = worker.EventLoop().Run(func() (goja.Value, error) {
 		return function(nil)
 	})
 
 	// 标记脚本执行完成
-	completed = true
+	completed.Store(true)
 
 	if err != nil {
-		Error(w, err)
+		push(map[string]interface{}{
+			"datetime": time.Now().Format(time.RFC3339),
+			"level":    "error",
+			"message":  err.Error(),
+		})
 		return
 	}
-
-	data, err := util.ExportGojaValue(value)
-	if err != nil {
-		Error(w, err)
-		return
-	}
-
-	Success(w, data)
 }

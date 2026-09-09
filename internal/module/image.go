@@ -98,8 +98,15 @@ func (i *Image) SetDrawColor(c interface{}) error {
 		i.c.SetColor(color.RGBA{rgba[0], rgba[1], rgba[2], rgba[3]})
 	case []interface{}:
 		rgba := []uint8{0, 0, 0, 255}
-		for i, e := range v {
-			rgba[i] = uint8(e.(int64))
+		for idx, e := range v {
+			if idx >= len(rgba) {
+				break
+			}
+			n, ok := e.(int64)
+			if !ok {
+				return errors.New("invalid color value: color component must be a number")
+			}
+			rgba[idx] = uint8(n)
 		}
 		i.c.SetColor(color.RGBA{rgba[0], rgba[1], rgba[2], rgba[3]})
 	default:
@@ -171,6 +178,10 @@ func (i *Image) Lasso(points [][]int, src []uint8, dst []uint8) *Image {
 	srcs, dsts := append([]uint8{0, 0, 0, 255}, src...), []uint8{0, 0, 0, 255}
 	copy(srcs, src)
 	copy(dsts, dst)
+	// src 需至少提供高 4 字节（srcs[4..7]），否则越界
+	if len(srcs) < 8 {
+		srcs = append(srcs, make([]uint8, 8-len(srcs))...)
+	}
 	img := i.c.Image()
 	bounds := img.Bounds()
 	output := image.NewRGBA(bounds)

@@ -283,10 +283,10 @@ A comprehensive mock API server for development and testing. Supports service ma
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="maximum-scale=1.0">
-        <link rel="stylesheet" href="/libs/element-plus/2.10.5/index.min.css" />
-        <script src="/libs/vue/3.5.18/vue.global.prod.min.js"></script>
-        <script src="/libs/element-plus/2.10.5/index.full.min.js"></script>
-        <script src="/libs/element-plus-icons-vue/2.3.1/index.iife.min.js"></script>
+        <link rel="stylesheet" href="https://cdn.bootcdn.net/ajax/libs/element-plus/2.10.5/index.min.css" />
+        <script src="https://cdn.bootcdn.net/ajax/libs/vue/3.5.18/vue.global.prod.min.js"></script>
+        <script src="https://cdn.bootcdn.net/ajax/libs/element-plus/2.10.5/index.full.min.js"></script>
+        <script src="https://cdn.bootcdn.net/ajax/libs/element-plus-icons-vue/2.3.1/index.iife.min.js"></script>
         <base target="_blank" />
         <style>
             html, body {
@@ -710,9 +710,9 @@ A comprehensive mock API server for development and testing. Supports service ma
                                     }
                                     return map.get(src)
                                 }
-                            require("/libs/monaco-editor/0.55.1/min/vs/loader.js")
+                            require("https://cdn.bootcdn.net/ajax/libs/monaco-editor/0.55.1/min/vs/loader.js")
                                 .then(() => {
-                                    window.require.config({ paths: { vs: window.location.origin + "/libs/monaco-editor/0.55.1/min/vs" } })
+                                    window.require.config({ paths: { vs: "https://cdn.bootcdn.net/ajax/libs/monaco-editor/0.55.1/min/vs" } })
                                 })
                                 .then(() => {
                                     window.require(["vs/editor/editor.main"], () => {

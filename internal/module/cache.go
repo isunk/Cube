@@ -15,25 +15,28 @@ var cache = NewMemoryCache()
 
 type MemoryCache struct {
 	sync.Map
-	timers map[interface{}]*time.Timer
+	sync.Mutex // 保护 timers map，避免并发访问
+	timers     map[interface{}]*time.Timer
 }
 
 func (c *MemoryCache) Set(key interface{}, value interface{}, timeout int) {
-	if value == nil || timeout <= 0 { // 如果值为 nil 或失效时间小于等于 0，则立即删除该缓存
-		// 删除缓存
+	c.Lock()
+	defer c.Unlock()
+	// 删除旧定时器
+	if t, ok := c.timers[key]; ok {
+		t.Stop()
+		delete(c.timers, key)
+	}
+	// 如果值为 nil 或失效时间小于等于 0，则立即删除缓存并返回
+	if value == nil || timeout <= 0 {
 		c.Delete(key)
-		// 清理定时器
-		if t, ok := c.timers[key]; ok {
-			t.Stop()
-			delete(c.timers, key)
-		}
 		return
 	}
-
-	// 设置缓存
+	// 设置缓存和新的失效定时器
 	c.Store(key, value)
-	// 设置失效时间，单位毫秒
 	c.timers[key] = time.AfterFunc(time.Duration(timeout)*time.Millisecond, func() {
+		c.Lock()
+		defer c.Unlock()
 		c.Delete(key)
 		delete(c.timers, key)
 	})
@@ -52,6 +55,8 @@ func (c *MemoryCache) Has(key interface{}) bool {
 }
 
 func (c *MemoryCache) Expire(key interface{}, timeout int) {
+	c.Lock()
+	defer c.Unlock()
 	// 查询旧定时器，如果存在则停止并删除
 	if t, ok := c.timers[key]; ok {
 		t.Stop()
@@ -68,6 +73,8 @@ func (c *MemoryCache) Expire(key interface{}, timeout int) {
 
 	// 设置新的失效时间
 	c.timers[key] = time.AfterFunc(time.Duration(timeout)*time.Millisecond, func() {
+		c.Lock()
+		defer c.Unlock()
 		c.Delete(key)
 		delete(c.timers, key)
 	})

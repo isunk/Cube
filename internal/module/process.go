@@ -32,19 +32,22 @@ func (p *ProcessClient) Pexec(command string, params ...string) *goja.Promise {
 
 	t := p.ctx.Worker.EventLoop().NewEventTaskTrigger()
 
-	t.AddTask(func() {
+	t.AddTask(func() error {
 		output, err := exec.Command(command, params...).Output()
 		if err != nil {
-			t.AddMicroTask(func() {
+			t.AddMicroTask(func() error {
 				reject(runtime.NewGoError(err))
 				t.Cancel()
+				return nil
 			})
-			return
+			return nil
 		}
-		t.AddMicroTask(func() { // resolve() must be called on the loop
+		t.AddMicroTask(func() error { // resolve() must be called on the loop
 			resolve(builtin.Buffer(output))
 			t.Cancel()
+			return nil
 		})
+		return nil
 	})
 
 	return promise

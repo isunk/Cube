@@ -359,7 +359,7 @@ Implements a VOD server with multiple content sources including MAC CMS API inte
                 </div>
             </div>
         </div>
-        <script src="/libs/vue/3.5.18/vue.global.prod.min.js"></script>
+        <script src="https://cdn.bootcdn.net/ajax/libs/vue/3.5.18/vue.global.prod.min.js"></script>
         <script>
             const app = Vue.createApp({
                 data() {

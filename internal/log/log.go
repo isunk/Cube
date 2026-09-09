@@ -34,3 +34,9 @@ func Warn(id int, e ...interface{}) {
 func Error(id int, e ...interface{}) {
 	log.Println(append(append([]interface{}{"\033[0;31m" + time.Now().Format("2006-01-02 15:04:05.000"), id, "Error"}, e...), "\033[m")...)
 }
+
+// Fatal 输出致命错误日志后退出进程，用于启动阶段不可恢复的错误
+func Fatal(e ...interface{}) {
+	log.Println(append([]interface{}{time.Now().Format("2006-01-02 15:04:05.000"), "Fatal"}, e...)...)
+	os.Exit(1)
+}

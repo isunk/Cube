@@ -1,6 +1,7 @@
 package module
 
 import (
+	"context"
 	"errors"
 	"sync"
 	"time"
@@ -47,17 +48,20 @@ func (b *BlockingQueueClient) Drain(size int, timeout int) (output []interface{}
 	b.Lock()
 	defer b.Unlock()
 	output = make([]interface{}, 0, size) // 创建切片，初始大小为 0，最大为 size
-	c := make(chan int, 1)
-	go func(ch chan int) {
-		for i := 0; i < size; i++ {
-			output = append(output, <-b.queue)
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeout)*time.Millisecond) // 使用 context 实现超时控制（替代原 timer 通道方案，避免 goroutine 泄漏）
+	defer cancel()
+	for i := 0; i < size; i++ {
+		select {
+		case val, ok := <-b.queue:
+			if ok {
+				output = append(output, val)
+			} else {
+				return
+			}
+		case <-ctx.Done():
+			return
 		}
-		ch <- 0
-	}(c)
-	timer := time.NewTimer(time.Duration(timeout) * time.Millisecond)
-	select {
-	case <-c:
-	case <-timer.C: // 定时器也是一个通道
 	}
 	return
 }

@@ -11,7 +11,7 @@ var Db *sql.DB
 func InitDb() {
 	var err error
 
-	Db, err = sql.Open("sqlite", "./cube.db")
+	Db, err = sql.Open("sqlite", "./cube.db?_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)&_pragma=busy_timeout(5000)") // WAL 读写并发、NORMAL 提升写入性能、busy_timeout 5000ms 锁等待，连接建立时对每条连接生效
 	if err != nil {
 		panic(err)
 	}

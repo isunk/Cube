@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"path"
 	"strings"
+	"time"
 
 	"cube/internal/builtin"
 	"cube/internal/cache"
@@ -20,8 +21,17 @@ type Worker struct {
 	runtime  *goja.Runtime
 	function goja.Callable
 	defers   []func()
-	loop     *builtin.EventLoop // 事件循环
-	err      error              // 中断异常
+	loop     *builtin.EventLoop                     // 事件循环
+	err      error                                  // 中断异常
+	logger   func(level string, args ...goja.Value) // eval 场景的日志重定向目标，nil 时 console 写服务端日志
+}
+
+func (w *Worker) Logger() func(level string, args ...goja.Value) {
+	return w.logger
+}
+
+func (w *Worker) SetLogger(fn func(level string, args ...goja.Value)) {
+	w.logger = fn
 }
 
 func (w *Worker) Run(params ...goja.Value) (goja.Value, error) {
@@ -88,15 +98,21 @@ func (w *Worker) Reset() {
 
 	// 重置事件循环
 	w.loop.Reset()
+
+	// 清除 eval 场景设置的日志重定向目标，恢复 console 写服务端日志
+	w.logger = nil
 }
 
 func NewProgram() *goja.Program {
 	// 编译源码
-	program, _ := goja.Compile(
+	program, err := goja.Compile(
 		"index",
 		"(function (id, ...params) { return require(id).default(...params); })", // 使用闭包，防止全局变量污染
 		false, // 关闭严格模式，增加运行时的容错能力
 	)
+	if err != nil {
+		panic(err)
+	}
 	return program
 }
 
@@ -112,7 +128,17 @@ func NewWorker(program *goja.Program, id int) *Worker {
 		panic("program is not a function")
 	}
 
-	worker := Worker{id, runtime, function, make([]func(), 0), builtin.NewEventLoop(), nil}
+	worker := Worker{id, runtime, function, make([]func(), 0), builtin.NewEventLoop(), nil, nil}
+
+	// 接入 goja 内置 Promise 的 unhandled rejection：tracker 在 leave 阶段（jobQueue 排空时）触发，收集到 EventLoop，由 Run 转为异步异常返回，使 Promise.resolve().then(()=>{throw}) 可被捕获
+	loop := worker.loop
+	runtime.SetPromiseRejectionTracker(func(p *goja.Promise, op goja.PromiseRejectionOperation) {
+		if op == goja.PromiseRejectionReject {
+			loop.TrackRejection(p, p.Result().String())
+		} else {
+			loop.UntrackRejection(p)
+		}
+	})
 
 	runtime.Set("require", func(id string) (goja.Value, error) {
 		program, exists := cache.Module.Get(id)
@@ -135,8 +161,9 @@ func NewWorker(program *goja.Program, id int) *Worker {
 
 			var src string
 			if stype == "link" {
-				// 在线请求网络源码
-				resp, err := http.Get(name)
+				// 在线请求网络源码（设置超时，避免因网络异常长时间阻塞）
+				client := &http.Client{Timeout: 30 * time.Second}
+				resp, err := client.Get(name)
 				if err != nil {
 					return nil, err
 				}
@@ -162,7 +189,8 @@ func NewWorker(program *goja.Program, id int) *Worker {
 				name,
 				"(function(exports, require, module) {"+src+"\n})",
 				parser.WithSourceMapLoader(func(p string) ([]byte, error) {
-					return []byte(src), nil
+					// 项目未提供 source map 文件，统一返回 nil 避免把源码误当作 map 解析
+					return nil, nil
 				}),
 			)
 			if err != nil {

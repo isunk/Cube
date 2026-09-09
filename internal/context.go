@@ -20,11 +20,11 @@ type ServiceContextReader struct {
 
 func (s *ServiceContextReader) Read(size int) (builtin.Buffer, error) {
 	buf := make([]byte, size)
-	_, err := s.reader.Read(buf)
+	n, err := s.reader.Read(buf)
 	if err == io.EOF {
 		return nil, nil
 	}
-	return buf, err
+	return buf[:n], err
 }
 
 func (s *ServiceContextReader) ReadByte() (byte, error) {
@@ -115,6 +115,9 @@ func (s *ServiceContext) GetFile(name string) (interface{}, error) {
 }
 
 func (s *ServiceContext) GetCerts() interface{} { // 获取客户端证书
+	if s.request.TLS == nil { // 非 TLS 请求时无客户端证书
+		return nil
+	}
 	return s.request.TLS.PeerCertificates
 }
 

@@ -21,6 +21,9 @@ import (
 var web embed.FS
 
 func init() {
+	// 解析命令行参数：config 包的 init 只定义 flag 不 Parse（详见 config.go 注释），必须在 InitDb/InitWorkerPool 等依赖 config 字段的初始化之前完成解析
+	config.Parse()
+
 	// 初始化数据库
 	internal.InitDb()
 
@@ -28,7 +31,9 @@ func init() {
 	log.Init()
 
 	// 初始化缓存
-	cache.Init(internal.Db)
+	if err := cache.Init(internal.Db); err != nil {
+		panic(err)
+	}
 
 	// 初始化虚拟机池
 	internal.InitWorkerPool()
@@ -55,7 +60,9 @@ func serve() {
 	if !config.Secure {
 		// 启用 HTTP
 		fmt.Println("Server has started on http://127.0.0.1:" + config.Port + " 🚀")
-		http.ListenAndServe(":"+config.Port, nil)
+		if err := http.ListenAndServe(":"+config.Port, nil); err != nil {
+			log.Fatal(err)
+		}
 		return
 	}
 
@@ -64,9 +71,14 @@ func serve() {
 	if config.ClientCertVerify {
 		// 设置对服务端证书校验
 		c.ClientAuth = tls.RequireAndVerifyClientCert
-		b, _ := os.ReadFile("./ca.crt")
+		b, err := os.ReadFile("./ca.crt")
+		if err != nil {
+			log.Fatal("failed to read ca.crt: ", err)
+		}
 		c.ClientCAs = x509.NewCertPool()
-		c.ClientCAs.AppendCertsFromPEM(b)
+		if !c.ClientCAs.AppendCertsFromPEM(b) {
+			log.Fatal("failed to parse ca.crt: no certificates found")
+		}
 	}
 
 	fmt.Println("Server has started on https://127.0.0.1:" + config.Port + " 🚀")
@@ -77,7 +89,9 @@ func serve() {
 			Addr:      ":" + config.Port,
 			TLSConfig: c,
 		}
-		server.ListenAndServeTLS(config.ServerCert, config.ServerKey)
+		if err := server.ListenAndServeTLS(config.ServerCert, config.ServerKey); err != nil {
+			log.Fatal(err)
+		}
 		return
 	}
 
@@ -86,5 +100,7 @@ func serve() {
 		Addr:      ":" + config.Port,
 		TLSConfig: c,
 	}
-	server.ListenAndServeTLS(config.ServerCert, config.ServerKey)
+	if err := server.ListenAndServeTLS(config.ServerCert, config.ServerKey); err != nil {
+		log.Fatal(err)
+	}
 }

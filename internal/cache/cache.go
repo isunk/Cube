@@ -2,7 +2,6 @@ package cache
 
 import (
 	"database/sql"
-	"regexp"
 
 	"cube/internal/model"
 
@@ -22,7 +21,7 @@ var (
 // Init initializes all cache modules
 func Init(db *sql.DB) error {
 	Route = &RouteCache{
-		routes: make(map[string]*regexp.Regexp),
+		routes: make([]RouteEntry, 0),
 		db:     db,
 	}
 	if err := Route.Init(); err != nil {

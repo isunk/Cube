@@ -4,7 +4,7 @@
 export LANG=C.UTF-8
 
 # 获取 monaco-editor 版本号
-export MONACO_EDITOR_VERSION := $(shell grep -horP "monaco-editor/[\d\.]+" ./web | uniq | cut -d "/" -f 2)
+export MONACO_EDITOR_VERSION := $(shell grep -horP "monaco-editor@[\d\.]+" ./web | uniq | sed 's/monaco-editor@//')
 
 .ONESHELL: # target 中的每行命令使用同一个 shell，用于支持多行命令
 
@@ -13,7 +13,16 @@ run: config # 从代码中运行
 	@go run .
 
 watch: # 监听当前目录下的相关文件变动，实时编译、运行
-	@gowatch -o ./cube
+	@
+	# Install gowatch if not present
+	if ! command -v gowatch >/dev/null 2>&1; then
+		go install github.com/silenceper/gowatch@latest
+	fi
+	# Create config if not exists
+	if [ ! -f gowatch.yml ]; then
+		printf '%s\n' '# gowatch config' '# 监听的文件类型' 'watch_exts:' '  - go' '  - vue' '  - html' '  - js' '  - css' '' '# 编译产物' 'appname: "./cube"' '' '# 编译参数' 'go_build_args: "-o ./cube"' '' '# 排除监听的目录' 'excluded_dirs:' '  - ".git"' '  - ".monkeycode"' '  - "node_modules"' '  - "web/libs"' > gowatch.yml
+	fi
+	gowatch -f gowatch.yml
 
 kill:
 	@ps -ef | grep -P "/cube|/gowatch" | grep -v "grep" | awk '{print $$2}' | xargs kill -9
@@ -49,27 +58,28 @@ config:
 	set -e
 	# Load resources from CDN
 	if [ "$(CDN)" = "1" ]; then # Use CDN resources
-		sed -i "s#window.location.origin + \"/libs/monaco-editor/$$MONACO_EDITOR_VERSION/min/vs\"#\"/libs/monaco-editor/$$MONACO_EDITOR_VERSION/min/vs\"#g" web/editor.html # 由于这里的 URL 需要在 Service Worker 中动态获取，因此需要补充完整的域名
-		sed -i 's#"/libs/#"https://cdn.bootcdn.net/ajax/libs/#g' web/*.html
+		sed -i "s#window.location.origin + \"/libs/monaco-editor@$$MONACO_EDITOR_VERSION/min/vs\"#\"/libs/monaco-editor@$$MONACO_EDITOR_VERSION/min/vs\"#g" web/editor.html # 由于这里的 URL 需要在 Service Worker 中动态获取，因此需要补充完整的域名
+		sed -i 's#"/libs/#"https://cdn.jsdelivr.net/npm/#g' web/*.html
 	else # Use local resources
 		# Download basic css, js, etc. resources
 		grep -hor "/libs/[^\"'\'''\'']*" ./web | grep -v "monaco-editor" | sort | uniq | while read uri
 		do
 			name=$${uri#/libs/}
+			cdn_name=$$(echo "$$name" | sed 's/@/\//g')
 			if [ -f "web/libs/$$name" ]; then
 				continue
 			fi
-			if wget --tries=5 --timeout=30 --no-check-certificate "https://cdn.bootcdn.net/ajax/libs/$$name" -P "web/libs/$$(dirname $$name)"; then
+			if wget --tries=5 --timeout=30 --no-check-certificate "https://cdn.jsdelivr.net/npm/$$name" -P "web/libs/$$(dirname $$name)"; then
 				continue
 			fi
 			echo "Download failed."
 			exit 1
 		done
 		# Download monaco-editor resources
-		if [ ! -d "./web/libs/monaco-editor/$$MONACO_EDITOR_VERSION/" ]; then
-			mkdir -p "./web/libs/monaco-editor/$$MONACO_EDITOR_VERSION/"
-			wget --tries=5 --timeout=30 --no-check-certificate "https://registry.npm.taobao.org/monaco-editor/-/monaco-editor-$$MONACO_EDITOR_VERSION.tgz" || (echo "Download failed." && exit 1)
-			tar -zxf "monaco-editor-$$MONACO_EDITOR_VERSION.tgz" -C "./web/libs/monaco-editor/$$MONACO_EDITOR_VERSION/" --strip-components 1 "package/min"
+		if [ ! -d "./web/libs/monaco-editor@$$MONACO_EDITOR_VERSION/" ]; then
+			mkdir -p "./web/libs/monaco-editor@$$MONACO_EDITOR_VERSION/"
+			wget --tries=5 --timeout=30 --no-check-certificate "https://registry.npmjs.org/monaco-editor/-/monaco-editor-$$MONACO_EDITOR_VERSION.tgz" -P . || (echo "Download failed." && exit 1)
+			tar -zxf "monaco-editor-$$MONACO_EDITOR_VERSION.tgz" -C "./web/libs/monaco-editor@$$MONACO_EDITOR_VERSION/" --strip-components 1 "package/min"
 			rm monaco-editor-$$MONACO_EDITOR_VERSION.tgz
 		fi
 	fi

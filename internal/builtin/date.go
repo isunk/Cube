@@ -10,6 +10,8 @@ import (
 	"github.com/dop251/goja"
 )
 
+var REGEX_DATE_PATTERN = regexp.MustCompile(`y{1,4}|M{1,2}|d{1,2}|H{1,2}|m{1,2}|s{1,2}|S{1,3}`) // 时间格式化占位符正则
+
 func init() {
 	Factories = append(Factories, func(ctx Context) {
 		runtime := ctx.Worker.Runtime()
@@ -17,7 +19,7 @@ func init() {
 		runtime.Get("Date").ToObject(runtime).Get("prototype").ToObject(runtime).Set("toString", func(call goja.FunctionCall) goja.Value {
 			t, ok := call.This.Export().(time.Time)
 			if !ok {
-				panic(runtime.NewTypeError("Method Date.prototype.toString is called on incompatible receiver"))
+				panic(runtime.NewTypeError("method Date.prototype.toString is called on incompatible receiver"))
 			}
 
 			layout := call.Argument(0).String()
@@ -40,8 +42,7 @@ func init() {
 }
 
 func toString(t time.Time, layout string) string {
-	r, _ := regexp.Compile("y{1,4}|M{1,2}|d{1,2}|H{1,2}|m{1,2}|s{1,2}|S{1,3}")
-	return r.ReplaceAllStringFunc(layout, func(s string) string {
+	return REGEX_DATE_PATTERN.ReplaceAllStringFunc(layout, func(s string) string {
 		switch s[0] {
 		case 'y':
 			return fmt.Sprint(t.Year())[max(4-len(s), 0):]
@@ -64,11 +65,9 @@ func toString(t time.Time, layout string) string {
 }
 
 func toTime(value string, layout string) (*time.Time, error) {
-	r, _ := regexp.Compile("y{1,4}|M{1,2}|d{1,2}|H{1,2}|m{1,2}|s{1,2}|S{1,3}")
-
 	p, m := make([]int, 7), map[byte]byte{'y': 0, 'M': 1, 'd': 2, 'H': 3, 'm': 4, 's': 5, 'S': 6}
 
-	idxes := r.FindAllStringIndex(layout, -1)
+	idxes := REGEX_DATE_PATTERN.FindAllStringIndex(layout, -1)
 	for _, a := range idxes {
 		v, err := strconv.Atoi(value[a[0]:a[1]])
 		if err != nil {

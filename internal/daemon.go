@@ -12,7 +12,8 @@ func RunDaemons(name string) {
 
 	rows, err := Db.Query("select name from source where name like ? and type = 'daemon' and active = true", name)
 	if err != nil {
-		panic(err)
+		log.Error(0, "failed to query daemons:", err)
+		return
 	}
 
 	defer rows.Close()
@@ -24,24 +25,28 @@ func RunDaemons(name string) {
 			continue
 		}
 
-		if _, exists := cache.Daemon.Get(n); exists { // 防止重复执行
-			continue
-		}
-
-		go func() {
+		go func(n string) {
 			worker := <-WorkerPool.Channels
+			// 原子 check-and-add，防止并发 RunDaemons 重复启动同一 daemon
+			if _, created := cache.Daemon.GetOrAdd(n, worker); !created {
+				worker.Reset()
+				WorkerPool.Channels <- worker
+				return
+			}
+
 			defer func() {
+				if x := recover(); x != nil { // 防止脚本或原生模块 panic 导致进程崩溃
+					log.Error(worker.Id(), "daemon panicked:", x)
+				}
 				worker.Reset()
 				WorkerPool.Channels <- worker
 				cache.Daemon.Remove(n)
 			}()
 
-			cache.Daemon.Add(n, worker)
-
 			_, err := worker.Run(worker.Runtime().ToValue("./daemon/" + n))
 			if err != nil {
 				log.Error(worker.Id(), err)
 			}
-		}()
+		}(n)
 	}
 }

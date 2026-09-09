@@ -1,0 +1,545 @@
+<template>
+    <el-row>
+        <el-button :icon="Plus" @click="onSourceCreate">New</el-button>
+        <el-upload :auto-upload="false" action="" :on-change="onSourceImport" :show-file-list="false" accept="application/json" style="display: none;">
+            <el-button ref="UploadRef"></el-button>
+        </el-upload>
+        <el-button-group style="margin-left: 8px;">
+            <el-button :icon="Upload" :loading="button.upload.loading" @click="UploadClick">Import</el-button>
+            <el-button :icon="Download" :disabled="table.selection.reversion ? table.selection.values.length >= table.pagination.count : !table.selection.values.length" @click="onSourceExport">Export</el-button>
+        </el-button-group>
+        <div style="margin-left: auto; display: inline-flex;">
+            <el-autocomplete v-model="table.search.keyword" placeholder="Enter keyword here" clearable @blur="onSourceFetch(true)" :suffix-icon="Search" @select="onSourceSearch" :fetch-suggestions="onSourceSearchSuggest" :trigger-on-focus="false">
+                <template #prepend>
+                    <el-select v-model="table.search.type" placeholder="Select a type" clearable @change="onSourceFetch(true)" style="width: 160px; background-color: var(--el-fill-color-blank);">
+                        <el-option v-for="type in Object.keys(constants.type)" :key="type" :label="capitalize(type)" :value="type">
+                        </el-option>
+                    </el-select>
+                </template>
+                <template #prefix>
+                    <tag-group count="1" v-model="table.search.tag" closable></tag-group>
+                </template>
+            </el-autocomplete>
+        </div>
+    </el-row>
+    <el-row style="margin-top: 10px;">
+        <el-table v-loading="table.loading" :data="table.records" stripe :row-class-name="({ row: record }) => record.active ? '' : 'disabled'" @sort-change="onSourceSortChange" table-layout="fixed">
+            <el-table-column width="40">
+                <template #header>
+                    <el-checkbox v-model="table.selection.reversion" :indeterminate="table.selection.values.length && table.selection.values.length < table.pagination.count" @change="onSourceSelectAll"></el-checkbox>
+                </template>
+                <template #default="scope">
+                    <el-checkbox :model-value="table.selection.reversion !== table.selection.values.includes(scope.row.rowid)" @change="(value) => onSourceSelect(value, scope.row.rowid)"></el-checkbox>
+                </template>
+            </el-table-column>
+            <el-table-column label="Name" prop="name" sortable :show-overflow-tooltip="true">
+                <template #default="scope">
+                    <el-button link type="primary" @click="onSourceEdit(scope.row)">
+                        {{ scope.row.name }}
+                    </el-button>
+                </template>
+            </el-table-column>
+            <el-table-column label="Type">
+                <template #default="scope">
+                    {{ capitalize(scope.row.type) }}
+                </template>
+            </el-table-column>
+            <el-table-column label="Language">
+                <template #default="scope">
+                    {{ capitalize(scope.row.lang) }}
+                </template>
+            </el-table-column>
+            <el-table-column label="Tag" show-overflow-tooltip>
+                <template #default="scope">
+                    <tag-group count="1" v-model="scope.row.tag"></tag-group>
+                </template>
+            </el-table-column>
+            <el-table-column label="Last Modified Date" prop="last_modified_date" :formatter="(row, column, value) => value?.replace(/T/, ' ')?.replace(/Z/, '')" sortable>
+            </el-table-column>
+            <el-table-column label="Operation">
+                <template #default="scope">
+                    <el-switch v-model="scope.row.active" @change="onSourceActive(scope.row)" style="margin-right: 12px;" :disabled="scope.row.status === 'true'">
+                    </el-switch>
+                    <el-button link type="primary" @click="onSourceCode(scope.row)" :icon="Edit" v-if="scope.row.status !== 'true'">
+                    </el-button>
+                    <el-button link type="danger" @click="onSourceDelete(scope.row)" :icon="Delete" v-if="!scope.row.active">
+                    </el-button>
+                    <el-button link :type="scope.row.status === 'true' ? 'danger' : 'primary'" @click="onSourceStatus(scope.row)" v-if="scope.row.type == 'daemon' && scope.row.active">
+                        <el-icon>
+                            <component :is="scope.row.status === 'true' ? VideoPause : VideoPlay"></component>
+                        </el-icon>
+                    </el-button>
+                </template>
+            </el-table-column>
+        </el-table>
+        <el-pagination @size-change="onSourceSizeChange" @current-change="onSourcePageChange" :current-page="table.pagination.index" :page-sizes="table.pagination.sizes" :page-size="table.pagination.size" layout="total, sizes, prev, pager, next, jumper" :total="table.pagination.count">
+        </el-pagination>
+    </el-row>
+    <el-dialog v-model="dialog.visible" :title="dialog.record.rowid ? dialog.record.active ? 'View' : 'Edit' : 'New'">
+        <el-form ref="FormRef" :model="dialog.record" label-position="right" label-width="96px" :rules="constants.rules" :hide-required-asterisk="dialog.record.active">
+            <el-form-item label="Type" prop="type">
+                <el-select v-model="dialog.record.type" :disabled="dialog.record.rowid" @change="dialog.record.lang = constants.type[dialog.record.type][0]" placeholder="Select a type">
+                    <el-option v-for="type in Object.keys(constants.type)" :key="type" :label="capitalize(type)" :value="type">
+                    </el-option>
+                </el-select>
+            </el-form-item>
+            <el-form-item label="Language" prop="lang">
+                <el-select v-model="dialog.record.lang" :disabled="dialog.record.rowid" placeholder="Select a language">
+                    <el-option v-for="lang in constants.type[dialog.record.type]" :key="lang" :label="capitalize(lang)" :value="lang">
+                    </el-option>
+                </el-select>
+            </el-form-item>
+            <el-form-item label="Name" prop="name">
+                <el-input v-model="this['proxy.dialog.record.name.value']" placeholder="Please input a name" minlength="2" maxlength="32" show-word-limit v-if="dialog.record.type === 'module' && !dialog.record.rowid">
+                    <template #prepend v-if="dialog.record.type === 'module'">
+                        <el-checkbox-group v-model="this['proxy.dialog.record.name.prefix']" :disabled="dialog.record.active">
+                            <el-checkbox-button label="node_modules/" key="node_modules/"></el-checkbox-button>
+                        </el-checkbox-group>
+                    </template>
+                </el-input>
+                <el-input v-model="dialog.record.name" placeholder="Please input a name" minlength="2" maxlength="32" show-word-limit :disabled="dialog.record.rowid" @change="!!~['controller', 'resource'].indexOf(dialog.record.type) && (dialog.record.url = dialog.record.name.replace(/([a-z])([A-Z]\w)/g, '$1/$2').toLowerCase())" v-else>
+                </el-input>
+            </el-form-item>
+            <el-form-item label="Method" v-if="dialog.record.type == 'controller'">
+                <el-select v-model="dialog.record.method" placeholder="Any" :disabled="dialog.record.active">
+                    <el-option label="Any" value=""></el-option>
+                    <el-option label="Get" value="GET"></el-option>
+                    <el-option label="Post" value="POST"></el-option>
+                    <el-option label="Put" value="PUT"></el-option>
+                    <el-option label="Delete" value="DELETE"></el-option>
+                </el-select>
+            </el-form-item>
+            <el-form-item label="Url" v-if="!!~['controller', 'resource'].indexOf(dialog.record.type)">
+                <el-input v-model="dialog.record.url" :disabled="dialog.record.active">
+                    <template #prepend>
+                        {{ this["dialog.url.prepend"] }}
+                    </template>
+                    <template #append v-if="dialog.record.active">
+                        <el-link type="primary" :underline="false" :icon="Position" :href="this['dialog.url.prepend'] + dialog.record.url" target="_blank"></el-link>
+                    </template>
+                </el-input>
+            </el-form-item>
+            <el-form-item label="Cron" prop="cron" v-if="dialog.record.type == 'crontab'">
+                <el-input v-model="dialog.record.cron" placeholder="For example: */5 * * * *" :disabled="dialog.record.active"></el-input>
+            </el-form-item>
+            <el-form-item label="Tag">
+                <tag-group v-model="dialog.record.tag" :closable="!dialog.record.active" :newable="!dialog.record.active"></tag-group>
+            </el-form-item>
+            <el-form-item v-if="!dialog.record.active">
+                <el-button type="primary" :loading="dialog.loading" @click="onSourceSubmit(FormRef)">Submit</el-button>
+                <el-button @click="onSourceCancel(FormRef)">Cancel</el-button>
+            </el-form-item>
+        </el-form>
+    </el-dialog>
+</template>
+
+<script>
+const { ElMessage, ElMessageBox, } = ElementPlus
+
+export default {
+    components: {
+        "tag-group": $import("/components/TagGroup.vue"),
+    },
+    setup() {
+        const { ref } = Vue
+        const { Delete, Download, Edit, Search, Plus, Position, Upload, VideoPause, VideoPlay, } = ElementPlusIconsVue
+        const UploadRef = ref()
+        return {
+            Delete,
+            Download,
+            Edit,
+            Search,
+            Plus,
+            Position,
+            Upload,
+            VideoPause,
+            VideoPlay,
+            FormRef: ref(),
+            UploadRef,
+            UploadClick: () => {
+                UploadRef.value.ref.click()
+            },
+        }
+    },
+    data() {
+        const minsize = [10, 8].find(i => i < (document.body.clientHeight - 304) / 49) ?? 5
+        return {
+            constants: {
+                type: {
+                    controller: ["typescript"],
+                    crontab: ["typescript"],
+                    daemon: ["typescript"],
+                    module: ["typescript"],
+                    resource: ["html", "javascript", "json", "text", "vue"],
+                    template: ["html", "javascript", "text", "vue"],
+                },
+                rules: {
+                    type: [{
+                        required: true,
+                        message: "Type is required",
+                        trigger: "blur",
+                    }],
+                    lang: [{
+                        required: true,
+                        message: "Language is required",
+                        trigger: "blur",
+                    }],
+                    name: [{
+                        required: true,
+                        message: "Name is required",
+                        trigger: "submit",
+                    }, {
+                        validator: (rule, value, callback) => {
+                            if (this.dialog.record.type === "module") {
+                                if (/^(node_modules\/)?\w{2,32}$/.test(value)) {
+                                    return callback()
+                                }
+                            } else if (/^\w{2,32}$/.test(value)) {
+                                return callback()
+                            }
+                            return callback(new Error("Name must be a string that matches /[A-Za-z0-9_]{2,32}/"))
+                        },
+                        trigger: "blur",
+                    }],
+                    cron: [{
+                        required: true,
+                        message: "Cron is required",
+                        trigger: "blur",
+                    }],
+                },
+            },
+            button: {
+                upload: {
+                    loading: false,
+                },
+            },
+            table: {
+                records: [],
+                selection: {
+                    values: [],
+                    reversion: false,
+                },
+                pagination: {
+                    sizes: [minsize, 20, 50, 100],
+                    size: minsize,
+                    index: 1,
+                    count: 0,
+                },
+                search: {
+                    keyword: "",
+                    type: "",
+                    tag: "",
+                },
+                sort: {
+                    prop: "rowid",
+                    order: "desc",
+                },
+                loading: false,
+            },
+            dialog: {
+                record: {},
+                visible: false,
+                loading: false,
+            },
+        }
+    },
+    computed: {
+        "dialog.url.prepend"() {
+            return { controller: "/service/", resource: "/resource/", }[this.dialog.record.type]
+        },
+        "proxy.dialog.record.name.prefix": {
+            get() {
+                return [this.dialog.record.name?.indexOf("node_modules/") === 0 && "node_modules/"].filter(i => i)
+            },
+            set(v) {
+                this.dialog.record.name = (v[0] || "") + this["proxy.dialog.record.name.value"]
+            },
+        },
+        "proxy.dialog.record.name.value": {
+            get() {
+                return this.dialog.record.name?.replace(/^node_modules\//, "") || ""
+            },
+            set(v) {
+                this.dialog.record.name = (this["proxy.dialog.record.name.prefix"][0] || "") + v
+            },
+        },
+        "proxy.table.search.tag": {
+            get() {
+                return this.table.search.tag.split(",").filter(i => i)
+            },
+            set(v) {
+                this.table.search.tag = v.join(",")
+            },
+        },
+    },
+    mounted() {
+        this.onSourceFetch()
+    },
+    methods: {
+        onSourceFetch(reset) {
+            if (reset) {
+                this.table.pagination.index = 1
+                this.table.selection.values.length = 0
+                this.table.selection.reversion = false
+            }
+            this.table.loading = true
+            fetch(`source?name=%25${this.table.search.keyword}%25&type=${this.table.search.type || ""}&tag=${this.table.search.tag}&from=${(this.table.pagination.index - 1) * this.table.pagination.size}&size=${this.table.pagination.size}&sort=${this.table.sort.prop} ${this.table.sort.order}&basic`).then(r => {
+                if (r.status != 200) {
+                    throw new Error(r.statusText)
+                }
+                return r.json()
+            }).then(r => {
+                this.table.pagination.count = r.data.total
+                this.table.pagination.index = Math.min(this.table.pagination.index, Math.ceil(r.data.total / this.table.pagination.size))
+                this.table.records = r.data.sources
+            }).catch(e => {
+                ElMessage.error(e.message)
+            }).finally(() => {
+                this.table.loading = false
+            })
+        },
+        onSourceSizeChange(value) {
+            this.table.pagination.size = value
+            this.onSourceFetch()
+        },
+        onSourcePageChange(value) {
+            this.table.pagination.index = value
+            this.onSourceFetch()
+        },
+        onSourceImport(file) {
+            const that = this,
+                reader = new FileReader()
+            that.button.upload.loading = true
+            reader.onload = function () {
+                const inputs = JSON.parse(this.result),
+                    upload = function (inputs) {
+                        fetch("source?bulk", {
+                            method: "POST",
+                            body: JSON.stringify(inputs),
+                        }).then(r => r.json()).then(r => {
+                            if (r.code === "0") {
+                                ElMessage.success("Import succeeded")
+                                that.onSourceFetch()
+                            } else {
+                                ElMessage.error(r.message)
+                            }
+                        }).finally(() => {
+                            that.button.upload.loading = false
+                        })
+                    }
+                fetch("source?size=5000&basic").then(r => r.json()).then(r => {
+                    const outputs = r.data.sources.reduce((map, e) => map.set(e.rowid, e.last_modified_date), new Map()),
+                        outdated = inputs.filter(e => e.last_modified_date < outputs.get(e.rowid)).map(e => e.rowid)
+                    if (outdated.length === 0) {
+                        upload(inputs)
+                        return
+                    }
+                    ElMessageBox.confirm(`${outdated.length} sources are out of date. Overwrite or skip?`, "Warning", {
+                        distinguishCancelAndClose: true,
+                        confirmButtonText: "Skip",
+                        cancelButtonText: "Overwrite",
+                        type: "warning",
+                    }).then(() => {
+                        upload(inputs.filter(e => !~outdated.indexOf(e.rowid)))
+                    }).catch(action => {
+                        if (action === "close") {
+                            that.button.upload.loading = false
+                            return
+                        }
+                        upload(inputs)
+                    })
+                })
+            }
+            reader.readAsText(file.raw, "utf-8")
+        },
+        onSourceExport() {
+            const a = document.createElement("a")
+            a.href = `source?name=%25${this.table.search.keyword}%25&type=${this.table.search.type || ""}&tag=${encodeURIComponent(this.table.search.tag)}&${this.table.selection.reversion ? "exclude" : "include"}=${encodeURIComponent(this.table.selection.values.join(","))}&size=5000&bulk`
+            a.download = ""
+            a.click()
+        },
+        onSourceSelect(checked, id) {
+            if (this.table.selection.reversion !== checked) {
+                this.table.selection.values.push(id)
+            } else {
+                this.table.selection.values.splice(this.table.selection.values.findIndex(value => value === id), 1)
+            }
+        },
+        onSourceSelectAll(checked) {
+            this.table.selection.values.length = 0
+            this.table.selection.reversion = checked
+        },
+        onSourceSortChange({ prop, order }) {
+            if (!order) {
+                this.table.sort.prop = "rowid"
+                this.table.sort.order = "desc"
+            } else {
+                this.table.sort.prop = prop
+                this.table.sort.order = { ascending: "asc", descending: "desc" }[order]
+            }
+            this.onSourceFetch()
+        },
+        onSourceEdit(record) {
+            this.dialog.record = { ...record, }
+            this.dialog.visible = true
+        },
+        onSourceCode(record) {
+            window.open(`editor.html?name=${record.name}&type=${record.type}` + (record.rowid ? "" : "&example"))
+        },
+        onSourceDelete(record) {
+            ElMessageBox.confirm(`${record.name} will be deleted permanently. Continue?`, "Warning", {
+                confirmButtonText: "Confirm",
+                type: "warning",
+                beforeClose: (action, instance, done) => {
+                    if (action === "confirm") {
+                        instance.confirmButtonLoading = true
+                        instance.confirmButtonText = "Delete..."
+                        fetch(`source?name=${record.name}&type=${record.type}`, {
+                            method: "DELETE",
+                        }).then(r => r.json()).then(r => {
+                            if (r.code === "0") {
+                                ElMessage.success("Delete succeeded")
+                                this.onSourceFetch()
+                            } else {
+                                ElMessage.error(r.message)
+                            }
+                            instance.confirmButtonLoading = false
+                        }).catch(e => {
+                            ElMessage.error(e.message)
+                            instance.confirmButtonLoading = false
+                        }).finally(() => {
+                            done()
+                        })
+                    } else {
+                        done()
+                    }
+                },
+            }).catch(() => { })
+        },
+        onSourceActive(record) {
+            fetch("source", {
+                method: "PUT",
+                body: JSON.stringify({
+                    name: record.name,
+                    type: record.type,
+                    active: record.active,
+                }),
+            }).then(r => r.json()).then(r => {
+                if (r.code === "0") {
+                    ElMessage.success((record.active ? "Active" : "Inactive") + " succeeded")
+                } else {
+                    ElMessage.error(r.message)
+                    record.active = !record.active
+                }
+            })
+        },
+        onSourceStatus(record) {
+            const status = record.status === "true" ? "false" : "true"
+            fetch("source", {
+                method: "PUT",
+                body: JSON.stringify({
+                    name: record.name,
+                    type: record.type,
+                    status,
+                }),
+            }).then(r => r.json()).then(r => {
+                if (r.code === "0") {
+                    ElMessage.success((status === "true" ? "Run" : "Stop") + " succeeded")
+                    record.status = status
+                } else {
+                    ElMessage.error(r.message)
+                }
+            })
+        },
+        onSourceSearch({ value }) {
+            this.table.search.keyword = this.table.search.keyword.substring(0, this.table.search.keyword.lastIndexOf(value))
+            const tag = value.replace(/^Tag: /, "")
+            if (tag && !~this["proxy.table.search.tag"].indexOf(tag)) {
+                this["proxy.table.search.tag"] = [...this["proxy.table.search.tag"], tag]
+            }
+        },
+        onSourceSearchSuggest(keyword, callback) {
+            if (!~this["proxy.table.search.tag"].indexOf(keyword)) {
+                callback([{ value: `Tag: ${keyword}` }])
+            } else {
+                callback([])
+            }
+        },
+        onSourceCreate() {
+            this.dialog.record = {
+                method: "",
+            }
+            this.dialog.visible = true
+        },
+        onSourceSubmit(FormRef) {
+            FormRef.validate(valid => {
+                if (!valid) {
+                    return false
+                }
+                const { name, type, lang, method, url, cron, tag, } = this.dialog.record
+                fetch("source", {
+                    method: !this.dialog.record.rowid ? "POST" : "PUT",
+                    body: JSON.stringify({ name, type, lang, method, url, cron, tag, }),
+                }).then(r => r.json()).then(r => {
+                    if (r.code === "0") {
+                        ElMessage.success("Submit succeeded")
+                        this.dialog.visible = false
+                        this.onSourceFetch()
+                        !this.dialog.record.rowid && this.onSourceCode(this.dialog.record)
+                    } else {
+                        ElMessage.error(r.message)
+                    }
+                })
+            })
+        },
+        onSourceCancel(FormRef) {
+            FormRef.resetFields()
+            this.dialog.visible = false
+        },
+        capitalize(text) {
+            return text?.slice(0, 1).toUpperCase() + text?.slice(1)
+        },
+    },
+}
+</script>
+
+<style scoped>
+    .el-table {
+        border-top: 1px solid #dcdfe6;
+    }
+    .el-pagination {
+        flex: auto;
+        margin-top: 13px;
+    }
+    .el-pagination .is-first {
+        flex: auto;
+    }
+    .el-table .cell {
+        white-space: nowrap;
+    }
+    .el-table .disabled {
+        border-color: #e4e7ed;
+        color: #c0c4cc;
+        cursor: not-allowed;
+    }
+    .el-dialog {
+        max-width: 720px;
+    }
+    .el-dialog .el-input-group__prepend .el-checkbox-group {
+        margin: 0 -20px;
+    }
+    .el-dialog .el-input-group__prepend .el-checkbox-button__inner {
+        border-right: 0;
+        border-top-right-radius: 0 !important;
+        border-bottom-right-radius: 0 !important;
+        text-decoration: line-through;
+        color: var(--el-disabled-text-color);
+    }
+    .el-dialog .el-input-group__prepend .is-checked .el-checkbox-button__inner {
+        text-decoration: none;
+        color: white;
+    }
+    .el-dialog .el-select {
+        max-width: 180px;
+    }
+</style>

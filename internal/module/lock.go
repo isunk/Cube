@@ -16,11 +16,9 @@ func init() {
 			}
 			client := locks.clients[name]
 			if client == nil {
-				var mutex sync.Mutex
 				client = &LockClient{
-					name:   &name,
-					mutex:  &mutex,
-					locked: new(bool),
+					name: name,
+					ch:   make(chan struct{}, 1),
 				}
 				locks.clients[name] = client
 			}
@@ -38,34 +36,34 @@ var locks struct {
 }
 
 type LockClient struct {
-	name   *string
-	mutex  *sync.Mutex
-	locked *bool
-}
-
-func (l *LockClient) tryLock() bool {
-	l.mutex.Lock()
-	defer l.mutex.Unlock()
-	if *l.locked {
-		return false
-	}
-	*l.locked = true
-	return true
+	name string
+	ch   chan struct{}
 }
 
 func (l *LockClient) Lock(timeout int) error {
-	for i := 0; i < timeout; i++ {
-		if l.tryLock() {
+	// timeout <= 0 表示非阻塞尝试，获取不到立即返回失败；timeout > 0 表示最多等待 timeout 毫秒
+	if timeout <= 0 {
+		select {
+		case l.ch <- struct{}{}:
 			return nil
+		default:
+			return errors.New("acquire lock " + l.name + " timed out")
 		}
-		time.Sleep(time.Millisecond)
 	}
-	l.Unlock()
-	return errors.New("acquire lock " + *l.name + " timed out")
+	timer := time.NewTimer(time.Duration(timeout) * time.Millisecond)
+	defer timer.Stop()
+	select {
+	case l.ch <- struct{}{}:
+		return nil
+	case <-timer.C:
+		// 超时表示始终未成功获取锁，不能调用 Unlock（会错误释放其他 goroutine 持有的锁）
+		return errors.New("acquire lock " + l.name + " timed out")
+	}
 }
 
 func (l *LockClient) Unlock() {
-	l.mutex.Lock()
-	defer l.mutex.Unlock()
-	*l.locked = false
+	select {
+	case <-l.ch:
+	default:
+	}
 }

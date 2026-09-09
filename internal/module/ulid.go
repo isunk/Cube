@@ -22,7 +22,9 @@ func init() {
 				num = *ulids.num + 1
 				ulids.num = &num
 			} else {
-				rand.Read(randomness[:])
+				if _, err := rand.Read(randomness[:]); err != nil {
+					panic("ulid: failed to read randomness: " + err.Error())
+				}
 				for i := 8; i < 16; i++ { // 后 8 个字节转数字
 					num |= uint64(randomness[i]) << (56 - (i-8)*8)
 				}

@@ -23,6 +23,8 @@ func InitHandle(web *embed.FS) {
 	// 开发态
 	http.HandleFunc("/source", authenticate(HandleSource))
 	http.HandleFunc("/document/", authenticate(HandleDocument))
+	http.HandleFunc("/database", authenticate(HandleDatabase))
+	http.HandleFunc("/file", authenticate(HandleFile))
 
 	fileList, _ := fs.Sub(web, "web")
 	fileServer := http.FileServer(http.FS(fileList))

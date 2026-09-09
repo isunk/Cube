@@ -1,19 +1,23 @@
 package module
 
+import "sync"
+
+var pipes = struct {
+	sync.Mutex
+	m map[string]*BlockingQueueClient
+}{m: make(map[string]*BlockingQueueClient, 99)}
+
 func init() {
 	register("pipe", func(ctx Context) interface{} {
 		return func(name string) *BlockingQueueClient {
-			if pipes == nil {
-				pipes = make(map[string]*BlockingQueueClient, 99)
-			}
-			if pipes[name] == nil {
-				pipes[name] = &BlockingQueueClient{
+			pipes.Lock()
+			defer pipes.Unlock()
+			if pipes.m[name] == nil {
+				pipes.m[name] = &BlockingQueueClient{
 					queue: make(chan interface{}, 99),
 				}
 			}
-			return pipes[name]
+			return pipes.m[name]
 		}
 	})
 }
-
-var pipes map[string]*BlockingQueueClient

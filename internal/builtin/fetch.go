@@ -30,26 +30,28 @@ func init() {
 			promise, resolve, reject := runtime.NewPromise()
 
 			t := ctx.Worker.EventLoop().NewEventTaskTrigger()
-			t.AddTask(func() {
+			t.AddTask(func() error {
 				c := &http.Client{}
 
 				resp, err := c.Do(req)
 				if err != nil {
-					t.AddMicroTask(func() {
+					t.AddMicroTask(func() error {
 						reject(runtime.NewGoError(err))
 						t.Cancel()
+						return nil
 					})
-					return
+					return nil
 				}
 				defer resp.Body.Close()
 
 				data, err := io.ReadAll(resp.Body)
 				if err != nil {
-					t.AddMicroTask(func() {
+					t.AddMicroTask(func() error {
 						reject(runtime.NewGoError(err))
 						t.Cancel()
+						return nil
 					})
-					return
+					return nil
 				}
 
 				headers := map[string]string{}
@@ -57,14 +59,16 @@ func init() {
 					headers[k] = v[0]
 				}
 
-				t.AddMicroTask(func() {
+				t.AddMicroTask(func() error {
 					resolve(&FetchResponse{
 						Status:  resp.StatusCode,
 						Headers: headers,
 						data:    data,
 					})
 					t.Cancel()
+					return nil
 				})
+				return nil
 			})
 
 			return promise, nil

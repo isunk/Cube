@@ -12,6 +12,8 @@ import (
 	"strings"
 )
 
+var REGEX_DIGEST_PARAM = regexp.MustCompile(`(\w+)="?([^",]*)`) // Digest 认证参数正则
+
 type QueryParams struct {
 	url.Values
 }
@@ -36,7 +38,7 @@ func (p *QueryParams) GetIntOrDefault(key string, defaultValue int) int {
 type DigestAuth struct{}
 
 func (a *DigestAuth) parse(input string) map[string]string {
-	matches := regexp.MustCompile(`(\w+)="?([^",]*)`).FindAllStringSubmatch(input, -1)
+	matches := REGEX_DIGEST_PARAM.FindAllStringSubmatch(input, -1)
 	if len(matches) == 0 {
 		return nil
 	}
@@ -56,9 +58,16 @@ func (a *DigestAuth) md5(input string) string {
 
 func (a *DigestAuth) VerifyWithMd5(input string, method string, userpass string) bool {
 	p := a.parse(input)
+	if p == nil {
+		return false
+	}
 
-	u := strings.Split(userpass, ":")
-	username, password := u[0], u[1]
+	// 用 SplitN 限制为 2 段，避免密码中含 ":" 被截断，避免缺 ":" 时越界
+	parts := strings.SplitN(userpass, ":", 2)
+	if len(parts) < 2 {
+		return false
+	}
+	username, password := parts[0], parts[1]
 
 	if p["username"] != username {
 		return false
@@ -73,7 +82,9 @@ func (a *DigestAuth) VerifyWithMd5(input string, method string, userpass string)
 
 func (a *DigestAuth) Random(size int) string {
 	b := make([]byte, size/2+1)
-	rand.Read(b)
+	if _, err := rand.Read(b); err != nil {
+		return ""
+	}
 	return hex.EncodeToString(b)[:size]
 }
 

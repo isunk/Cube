@@ -9,11 +9,18 @@ import (
 )
 
 func RunMonitor() {
-	p, _ := process.NewProcess(int32(os.Getppid()))
+	p, err := process.NewProcess(int32(os.Getpid()))
+	if err != nil {
+		fmt.Println("monitor: failed to init process:", err)
+		return
+	}
 	ticker := time.NewTicker(time.Millisecond * 1000)
 	for range ticker.C {
 		c, _ := p.CPUPercent()
-		m, _ := p.MemoryInfo()
+		m, err := p.MemoryInfo()
+		if err != nil || m == nil {
+			continue
+		}
 		fmt.Printf("\rcpu: %.2f%%, memory: %.2fmb, vm: %d/%d"+" ", // 结尾预留一个空格防止刷新过程中因字符串变短导致上一次打印的文本在结尾出溢出
 			c,
 			float32(m.RSS)/1024/1024,

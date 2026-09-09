@@ -4,10 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"strconv"
-	"time"
 
 	"cube/internal/cache"
+	"cube/internal/util"
 	"github.com/dop251/goja"
 	_ "github.com/go-sql-driver/mysql"
 	_ "modernc.org/sqlite"
@@ -49,12 +48,12 @@ type DatabaseTransaction struct {
 	t *sql.Tx
 }
 
-func (d *DatabaseTransaction) Query(stmt string, params ...interface{}) (*[]interface{}, error) {
-	rows, err := d.t.Query(stmt, params...)
+func (d *DatabaseTransaction) Query(stmt string, params ...interface{}) (*[]map[string]interface{}, error) {
+	records, err := util.Query(d.t, stmt, params...)
 	if err != nil {
 		return nil, err
 	}
-	return parse(rows)
+	return &records, nil
 }
 
 func (d *DatabaseTransaction) Exec(stmt string, params ...interface{}) (sql.Result, error) {
@@ -77,12 +76,12 @@ type DatabaseClient struct {
 	ctx Context
 }
 
-func (d *DatabaseClient) Query(stmt string, params ...interface{}) (*[]interface{}, error) {
-	rows, err := d.ctx.Db.Query(stmt, params...)
+func (d *DatabaseClient) Query(stmt string, params ...interface{}) (*[]map[string]interface{}, error) {
+	records, err := util.Query(d.ctx.Db, stmt, params...)
 	if err != nil {
 		return nil, err
 	}
-	return parse(rows)
+	return &records, nil
 }
 
 func (d *DatabaseClient) Exec(stmt string, params ...interface{}) (sql.Result, error) {
@@ -124,50 +123,4 @@ func (d *DatabaseClient) Transaction(fn goja.Callable, isolation sql.IsolationLe
 
 func NewDatabaseClient(ctx Context) *DatabaseClient {
 	return &DatabaseClient{ctx}
-}
-
-func parse(rows *sql.Rows) (*[]interface{}, error) {
-	defer rows.Close()
-
-	columns, _ := rows.Columns()
-	columnTypes, _ := rows.ColumnTypes()
-	dataset, row := make([]interface{}, len(columns)), make([]interface{}, len(columns))
-	for index := range dataset {
-		row[index] = &dataset[index] // 将每个值的指针放入接口切片中
-	}
-
-	var records []interface{}
-
-	for rows.Next() {
-		rows.Scan(row...)
-
-		record := make(map[string]interface{})
-		for index, data := range dataset {
-			if bytes, ok := data.([]byte); ok { // 对于使用 MySQL 驱动程序，返回值始终为 []byte，这里根据列类型进行转换（参考 https://github.com/go-sql-driver/mysql/issues/1401）
-				value := string(bytes)
-				switch columnTypes[index].DatabaseTypeName() {
-				case "SMALLINT", "MEDIUMINT", "INT", "INTEGER", "BIGINT", "YEAR":
-					data, _ = strconv.Atoi(value)
-				case "TINYINT", "BOOL", "BOOLEAN", "BIT":
-					data, _ = strconv.ParseBool(value)
-				case "FLOAT", "DOUBLE", "DECIMAL":
-					data, _ = strconv.ParseFloat(value, 64)
-				case "DATETIME", "TIMESTAMP":
-					data, _ = time.Parse("2006-01-02 15:04:05", value)
-				case "DATE":
-					data, _ = time.Parse("2006-01-02", value)
-				case "TIME":
-					data, _ = time.Parse("15:04:05", value)
-				case "NULL":
-					data = nil
-				default:
-					data = value
-				}
-			}
-			record[columns[index]] = data
-		}
-		records = append(records, record)
-	}
-
-	return &records, rows.Err()
 }

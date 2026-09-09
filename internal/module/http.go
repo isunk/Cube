@@ -6,6 +6,7 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"errors"
+	"fmt"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -51,8 +52,11 @@ func init() {
 				}
 				c.PrivateKey, err = x509.ParsePKCS1PrivateKey(bk.Bytes) // 使用 PKCS#1 格式
 				if err != nil {
-					c.PrivateKey, err = x509.ParsePKCS8PrivateKey(bk.Bytes) // 使用 PKCS#8 格式
-					if err != nil {
+					if key, e := x509.ParsePKCS8PrivateKey(bk.Bytes); e == nil { // 使用 PKCS#8 格式
+						c.PrivateKey = key
+					} else if ecKey, e := x509.ParseECPrivateKey(bk.Bytes); e == nil { // 使用 EC 格式
+						c.PrivateKey = ecKey
+					} else {
 						return nil, errors.New("invalid private key")
 					}
 				}
@@ -82,7 +86,10 @@ func init() {
 				}
 				// 设置代理服务器
 				if options.Proxy != "" {
-					u, _ := url.Parse(options.Proxy)
+					u, err := url.Parse(options.Proxy)
+					if err != nil {
+						return nil, fmt.Errorf("invalid proxy url: %v", err)
+					}
 					t.Proxy = http.ProxyURL(u)
 				}
 				httpc.c.Transport = t
@@ -184,12 +191,23 @@ func (h *HttpClient) ToFormData(data *map[string]interface{}) (*FormData, error)
 			}
 			continue
 		}
-		f := v.(map[string]interface{})
-		p, err := w.CreateFormFile(k, f["filename"].(string))
+		f, ok := v.(map[string]interface{})
+		if !ok {
+			return nil, fmt.Errorf("form field %s must be a string or an object with filename and data", k)
+		}
+		filename, ok := f["filename"].(string)
+		if !ok {
+			return nil, fmt.Errorf("form field %s is missing string filename", k)
+		}
+		data, ok := f["data"].(*builtin.Buffer)
+		if !ok {
+			return nil, fmt.Errorf("form field %s is missing data", k)
+		}
+		p, err := w.CreateFormFile(k, filename)
 		if err != nil {
 			return nil, err
 		}
-		if _, err := p.Write(*(f["data"].(*builtin.Buffer))); err != nil {
+		if _, err := p.Write(*data); err != nil {
 			return nil, err
 		}
 	}
