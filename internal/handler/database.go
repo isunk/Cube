@@ -86,7 +86,7 @@ func HandleDatabase(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if !returnless {
-		Success(w, data)
+		Success(w, data, true)
 	} else {
 		buf := &bytes.Buffer{}
 		enc := json.NewEncoder(buf)

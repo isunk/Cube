@@ -5,20 +5,56 @@ A comprehensive mock API server for development and testing. Supports service ma
 1. Create a controller with url `/service/mockd` and method `Any`.
     ```typescript
     //?name=mockd&type=controller&url=mockd{name}&method=&tag=mock
-    import * as JSON5 from "https://cdn.bootcdn.net/ajax/libs/json5/2.2.3/index.min.js"
     import { helper, ColumnType } from "./DbHelper"
 
-    abstract class Record {
-        ID?: number
+    const db = {
+        query(stmt: string, params: any[]) {
+            return Promise.resolve({ rows: helper.query(stmt, ...params) })
+        }
     }
 
-    class Collection extends Record {
+    export default (app => app.run.bind(app))(new class {
+        public run(ctx: ServiceContext) {
+            const params = Object.entries(ctx.getForm()).reduce((p, c) => { p[c[0]] = c[1]?.[0]; return p; }, {} as Record<string, any>),
+                name = ctx.getPathVariables().name
+            if ("setup" in params) {
+                helper.dropTable("MockCollection")
+                helper.createTable("MockCollection", [
+                    { name: "Name", type: ColumnType.String, },
+                    { name: "PreRequestScript", type: ColumnType.Text, },
+                    { name: "Variables", type: ColumnType.Text, },
+                    { name: "Libraries", type: ColumnType.Text, },
+                ])
+                helper.dropTable("MockService")
+                helper.createTable("MockService", [
+                    { name: "CollectionID", type: ColumnType.Integer, },
+                    { name: "Active", type: ColumnType.Boolean, },
+                    { name: "RequestMethod", type: ColumnType.String, },
+                    { name: "RequestURL", type: ColumnType.String, },
+                    { name: "ResponseCode", type: ColumnType.Integer, },
+                    { name: "ResponseHeaders", type: ColumnType.Text, },
+                    { name: "ResponseBody", type: ColumnType.Text, },
+                    { name: "PreResponseScript", type: ColumnType.Text, },
+                ])
+                return
+            }
+            if ("test" in params || name) {
+                return new MockStrategy(ctx.getMethod(), ctx.getHeader(), ctx.getBody(), params, name).run()
+            }
+            return new MetadataStrategy(ctx.getMethod(), ["POST", "PUT"].includes(ctx.getMethod()) ? ctx.getBody()?.toJson() : "", params).run()
+        }
+    })
+
+    interface Collection {
+        ID?: number
         Name: string
         PreRequestScript: string
         Variables: string
+        Libraries: string
     }
 
-    class Service extends Record {
+    interface Service {
+        ID?: number
         CollectionID: number
         Active: boolean
         RequestMethod: string
@@ -30,7 +66,7 @@ A comprehensive mock API server for development and testing. Supports service ma
     }
 
     class CorsServiceResponse extends ServiceResponse {
-        constructor(status = 200, headers = undefined, data = undefined) {
+        constructor(status = 200, headers?: { [name: string]: string | number; }, data?: any) {
             super(
                 status,
                 {
@@ -45,105 +81,82 @@ A comprehensive mock API server for development and testing. Supports service ma
     }
 
     interface ServiceStrategy {
-        run()
+        run(): any
     }
 
-    class MetadataStrategy<T> implements ServiceStrategy {
+    class MetadataStrategy implements ServiceStrategy {
         private method: string
 
-        private requestBody: Buffer
+        private body: any
 
-        private params: { ID: string, [name: string]: string }
+        private query: { ID: string, [name: string]: string }
 
         private table: string
 
-        private isSetup: boolean
-
-        constructor(method: string, requestBody: Buffer, params: any) {
+        constructor(method: string, body: Buffer, params: any) {
             this.method = method
-            this.requestBody = requestBody
-            const { t, ...p } = params
-            this.params = p
+            this.body = body
+            const { t, ...query } = params
+            this.query = query as typeof this.query
             this.table = "Mock" + t
-            this.isSetup = "setup" in params
         }
 
-        run() {
-            if (this.isSetup) {
-                return this.setup()
-            }
+        async run() {
             if (this.table && !["MockCollection", "MockService"].includes(this.table)) {
                 throw new Error("invalid table")
             }
+
             switch (this.method) {
                 case "POST":
-                    return this.post(this.table, this.requestBody.toJson())
+                    return new ServiceResponse(200, undefined, await this.post(this.table, this.body))
                 case "DELETE":
-                    return this.delete(this.table, this.params.ID.split(","))
+                    return new ServiceResponse(200, undefined, await this.delete(this.table, this.query.ID.split(",")))
                 case "PUT":
-                    return this.put(this.table, this.params.ID, this.requestBody.toJson())
+                    return new ServiceResponse(200, undefined, await this.put(this.table, this.query.ID, this.body))
                 case "GET":
-                    return this.get(this.table, this.params)
+                    return new ServiceResponse(200, undefined, await this.get(this.table, this.query))
                 default:
                     return new ServiceResponse(405)
             }
         }
 
-        public setup() {
-            helper.dropTable("MockCollection")
-            helper.createTable("MockCollection", [
-                { name: "Name", type: ColumnType.String, },
-                { name: "PreRequestScript", type: ColumnType.Text, },
-                { name: "Variables", type: ColumnType.Text, },
-            ])
-            helper.dropTable("MockService")
-            helper.createTable("MockService", [
-                { name: "CollectionID", type: ColumnType.Integer, },
-                { name: "Active", type: ColumnType.Boolean, },
-                { name: "RequestMethod", type: ColumnType.String, },
-                { name: "RequestURL", type: ColumnType.String, },
-                { name: "ResponseCode", type: ColumnType.Integer, },
-                { name: "ResponseHeaders", type: ColumnType.Text, },
-                { name: "ResponseBody", type: ColumnType.Text, },
-                { name: "PreResponseScript", type: ColumnType.Text, },
-            ])
+        public async post(table: string, input: any | any[]) {
+            return Promise.all((Array.isArray(input) ? input : [input]).map(async (i) => {
+                const keys = this.columns(Object.keys(i))
+                return (await db.query(`INSERT INTO ${table}(${keys.join(", ")}) VALUES(${keys.map(_ => "?").join(", ")})`, keys.map(c => i[c])))
+            }))
         }
 
-        public post(table: string, input: any | any[]) {
-            return (Array.isArray(input) ? input : [input]).map(i => helper.insert(table, i))
+        public async delete(table: string, ids: string[]) {
+            return await db.query(`DELETE FROM ${table} WHERE ID IN (${ids.map(() => "?").join(",")})`, ids)
         }
 
-        public delete(table: string, ids: string[]) {
-            return helper.delete(table, {
-                conditions: [{ field: "ID", operator: "in", value: ids }],
-                conjunction: "AND",
-            })
-        }
-
-        public put(table: string, id: string, input: any) {
-            const record = helper.select(table, {
-                conditions: [{ field: "ID", operator: "=", value: id }],
-                conjunction: "AND",
-            }).pop()
+        public async put(table: string, id: string, input: any) {
+            const record = (await db.query(`SELECT * FROM ${table} WHERE ID = ?`, [id])).rows[0]
             if (!record) {
                 throw new Error("record not found")
             }
-            return helper.update(table, {
-                conditions: [{ field: "ID", operator: "=", value: id }],
-                conjunction: "AND",
-            }, this.toPutData(input, record))
+            const data = this.patch(input, record),
+                columns = this.columns(Object.keys(data))
+            return await db.query(`UPDATE ${table} SET ${columns.map(c => c + " = ?").join(", ")} WHERE ID = ?`, [...columns.map(c => data[c]), id])
         }
 
-        public get(table: string, params: { [name: string]: string }) {
-            return helper.select(table, {
-                conditions: Object.entries(params).map(([field, value]) => {
-                    return { field, operator: "=", value }
-                }),
-                conjunction: "AND",
-            })
+        public async get(table: string, input: { [name: string]: string }) {
+            const entries = Object.entries(input)
+            this.columns(entries.map(([name]) => name))
+            return (await db.query(`SELECT * FROM ${table} WHERE ${entries.map(([name]) => `${name} = ?`).join(" AND ") || "1 = 1"} ORDER BY ID DESC`, entries.map(([, value]) => value))).rows
         }
 
-        private toPutData(data, record) {
+        private columns(keys: string[]) {
+            for (const k of keys) {
+                if (!/^[A-Za-z][A-Za-z0-9_]*$/.test(k)) {
+                    throw new Error(`invalid column: ${k}`)
+                }
+            }
+            return keys
+        }
+
+        private patch(data: any, record: any) {
             const merge = (a, [start, del, add, checksum]) => {
                 const b = a.slice(0, start) + add + a.slice(start + del)
                 let hash = 5381
@@ -157,9 +170,10 @@ A comprehensive mock API server for development and testing. Supports service ma
             }
             return Object.fromEntries(
                 Object.entries(data)
+                    .filter(([k]) => k !== "ID")
                     .map(([k, v]) => {
-                        if (["ResponseBody", "PreRequestScript"].includes(k) && Array.isArray(v) && v.length === 4) {
-                            return [k, merge(record[k], v as [any, any, any, any])]
+                        if (["ResponseBody", "PreRequestScript", "Libraries"].includes(k) && Array.isArray(v) && v.length === 4) {
+                            return [k, merge(record[k] ?? "", v as [any, any, any, any])]
                         }
                         return [k, v]
                     })
@@ -170,32 +184,38 @@ A comprehensive mock API server for development and testing. Supports service ma
     class MockStrategy implements ServiceStrategy {
         private method: string
 
-        private requestBody: string
+        private body: any
 
         private name: string
 
         private callback: string
 
-        constructor(method: string, requestBody: Buffer, params: any, name: string) {
+        private headers: Record<string, string>
+
+        private query: Record<string, any>
+
+        constructor(method: string, headers: Record<string, string>, body: Buffer, params: any, name: string) {
             this.method = method
-            this.requestBody = params.b ?? requestBody?.toString()
-            this.name = (name || params.u)?.replace(/^\//, "")
-            this.callback = params.c
+            this.body = (params.b && JSON.parse(decodeURIComponent(params.b + ''))) || body || {}
+            this.name = (name || params.u?.toString())?.replace(/^\//, "")
+            this.callback = params.c?.toString()
+            this.headers = headers
+            const { b, u, c, t, ...query } = params
+            this.query = query
         }
 
-        run() {
+        async run() {
             if (this.method === "OPTIONS") {
                 return new CorsServiceResponse(200)
             }
 
             try {
-                const response = this.mock(this.name, this.requestBody && JSON.parse(decodeURIComponent(this.requestBody)))
+                const response = await this.mock(this.name)
                 if (this.callback) {
                     return new ServiceResponse(200, undefined, `mockc.callbacks["${this.callback}"](${JSON.stringify(response)})`)
                 }
-                const isJson = /"content-type":"application\/json/i.test(JSON.stringify(response.headers))
-                return new CorsServiceResponse(response.status, response.headers, isJson ? JSON.stringify(response.body) : response.body)
-            } catch (err) {
+                return new CorsServiceResponse(response.status, response.headers, response.body)
+            } catch (err: any) {
                 let status = 500
                 if (err.message === "service not found") {
                     status = 404
@@ -204,74 +224,88 @@ A comprehensive mock API server for development and testing. Supports service ma
             }
         }
 
-        private mock(url: string, requestBody: any): { status: number; headers: any; body: any; } {
-            const service = helper.query(`
+        private async mock(url: string) {
+            const service = (await db.query(`
                 SELECT
-                    s.CollectionID CollectionID,
-                    s.RequestMethod RequestMethod,
-                    s.ResponseCode ResponseCode,
-                    s.ResponseHeaders ResponseHeaders,
-                    s.ResponseBody ResponseBody,
-                    s.PreResponseScript PreResponseScript,
-                    c.Variables Variables,
-                    c.PreRequestScript PreRequestScript
+                    s.CollectionID AS CollectionID,
+                    s.RequestMethod AS RequestMethod,
+                    s.ResponseCode AS ResponseCode,
+                    s.ResponseHeaders AS ResponseHeaders,
+                    s.ResponseBody AS ResponseBody,
+                    s.PreResponseScript AS PreResponseScript,
+                    c.Variables AS Variables,
+                    c.PreRequestScript AS PreRequestScript,
+                    c.Libraries AS Libraries
                 FROM
                     MockService s
                     LEFT JOIN MockCollection c ON s.CollectionID = c.ID
                 WHERE
                     s.Active = 1
-                    AND s.RequestURL like ?
+                    AND s.RequestURL LIKE ?
                 LIMIT 1
-            `, "%" + url.replace(/^https?:\/\/[^\/]+/, "").replace(/\?.*$/, ""))?.pop()
+            `, ["%" + url.replace(/^https?:\/\/[^\/]+/, "").replace(/\?.*$/, "").replace(/[\\%_]/g, "\\$&")])).rows[0]
             if (!service) {
                 throw new Error("service not found")
             }
+            const variables = JSON.parse(service.Variables || "{}"),
+                libs = (() => { try { return JSON.parse(service.Libraries || "[]") } catch { return [] } })()
+            const require = (name: string) => {
+                const lib = libs.find((l: any) => l.name === name)
+                if (!lib) throw new Error(`Module '${name}' not found`)
+                const exported: string[] = []
+                let code = lib.code
+                    .replace(/export\s+(function|class|const|let|var)\s+([$A-Za-z_]\w*)/g, (_, kw, n) => { exported.push(n); return `${kw} ${n}` })
+                    .replace(/export\s*\{([^}]+)\}/g, (_, names) => {
+                        names.split(",").map((s: string) => {
+                            const [orig, alias] = s.trim().split(/\s+as\s+/)
+                            exported.push(alias ? `${alias}: ${orig}` : orig)
+                        })
+                        return ""
+                    })
+                if (exported.length) code += `\nreturn { ${exported.join(", ")} }`
+                return (new Function(code))()
+            }
             const context = {
                 request: {
-                    body: requestBody,
+                    method: this.method,
+                    url: "/" + this.name,
+                    headers: this.headers,
+                    query: this.query,
+                    body: this.body,
                 },
                 response: {
                     status: service.ResponseCode || 200,
                     headers: JSON.parse(service.ResponseHeaders || "{}"),
-                    body: !!~service.ResponseHeaders.indexOf("json") ? this.json52any(service.ResponseBody || "{}") : service.ResponseBody,
+                    body: service.ResponseHeaders.includes("json") ? this.parse(service.ResponseBody || "{}") : service.ResponseBody,
                 },
-                variables: JSON.parse(service.Variables || "{}"),
+                variables,
+                session: {} as Record<string, any>,
             }
-            if (service.PreRequestScript) {
-                context.response.body = (new Function("$", service.PreRequestScript))(context) ?? context.response.body
+            const imports = (script: string) => script
+                .replace(/import\s+(.*?)\s+from\s+['"]([^'"]+)['"]/g, (_, spec, path) => `const ${spec.includes("{") ? spec : spec.replace("* as ", "")} = require('${path}')`)
+            const AsyncFunction = Object.getPrototypeOf(async function () { }).constructor
+            for (const script of [service.PreRequestScript, service.PreResponseScript]) {
+                const code = imports(script ?? "").trim()
+                if (code) {
+                    await new AsyncFunction("$", "require", code)(context, require)
+                }
             }
-            if (service.PreResponseScript) {
-                context.response.body = (new Function("$", service.PreResponseScript))(context) ?? context.response.body
-            }
-            const variables = JSON.stringify(context.variables)
-            if (variables !== service.Variables) {
-                helper.update("MockCollection", {
-                    conditions: [{ field: "ID", operator: "=", value: service.CollectionID, }],
-                    conjunction: "AND",
-                }, { variables: variables })
+            const newVariables = JSON.stringify(context.variables)
+            if (newVariables !== service.Variables) {
+                await db.query('UPDATE MockCollection SET Variables = ? WHERE ID = ?', [newVariables, service.CollectionID])
             }
             return context.response
         }
 
-        private json52any(text: string) {
+        private parse(text: string) {
             try {
-                return JSON5.parse(text, undefined)
-            } catch (e) {
-                throw new Error("invalid json5: " + e.message)
+                const stripped = text.replace(/("(?:[^"\\]|\\.)*")|\/\/.*$|\/\*[\s\S]*?\*\//gm, (_, s) => s || '')
+                return JSON.parse(stripped.replace(/,(\s*[}\]])/g, '$1'))
+            } catch (e: any) {
+                throw new Error("invalid json: " + e.message)
             }
         }
     }
-
-    export default (app => app.run.bind(app))(new class {
-        public run(ctx: ServiceContext) {
-            const params = Object.entries(ctx.getForm()).reduce((p, c) => { p[c[0]] = c[1]?.[0]; return p; }, {}),
-                name = ctx.getPathVariables().name
-            if ("test" in params || name) {
-                return new MockStrategy(ctx.getMethod(), ctx.getBody(), params, name).run()
-            }
-            return new MetadataStrategy(ctx.getMethod(), ctx.getBody(), params).run()
-        }
-    })
     ```
 
 2. Create a resource with url `/resource/mockd`.
@@ -283,12 +317,15 @@ A comprehensive mock API server for development and testing. Supports service ma
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="maximum-scale=1.0">
-        <link rel="stylesheet" href="https://cdn.bootcdn.net/ajax/libs/element-plus/2.10.5/index.min.css" />
-        <script src="https://cdn.bootcdn.net/ajax/libs/vue/3.5.18/vue.global.prod.min.js"></script>
-        <script src="https://cdn.bootcdn.net/ajax/libs/element-plus/2.10.5/index.full.min.js"></script>
-        <script src="https://cdn.bootcdn.net/ajax/libs/element-plus-icons-vue/2.3.1/index.iife.min.js"></script>
+        <link rel="stylesheet" href="https://s4.zstatic.net/ajax/libs/element-plus/2.10.5/index.min.css" />
+        <script src="https://s4.zstatic.net/ajax/libs/vue/3.5.18/vue.global.prod.min.js"></script>
+        <script src="https://s4.zstatic.net/ajax/libs/element-plus/2.10.5/index.full.min.js"></script>
+        <script src="https://s4.zstatic.net/ajax/libs/element-plus-icons-vue/2.3.1/index.iife.min.js"></script>
         <base target="_blank" />
         <style>
+            [v-cloak] {
+                display: none;
+            }
             html, body {
                 height: 100%;
                 margin: 0;
@@ -311,10 +348,13 @@ A comprehensive mock API server for development and testing. Supports service ma
             .el-dialog__body {
                 flex-grow: 1;
             }
-            .el-dialog__body .el-tabs, .el-tab-pane {
+            .el-dialog__body .el-tabs {
                 height: 500px;
             }
-            .is-fullscreen .el-dialog__body .el-tabs, .el-tab-pane {
+            .el-dialog__body .el-tab-pane {
+                height: 100%;
+            }
+            .is-fullscreen .el-dialog__body .el-tabs {
                 height: 100%;
             }
         </style>
@@ -323,7 +363,15 @@ A comprehensive mock API server for development and testing. Supports service ma
     <body>
         <div id="app" v-cloak style="padding: 32px; position: relative;">
             <el-card>
-                <el-row>
+                <el-skeleton v-if="collection.loading" animated>
+                    <template #template>
+                        <div style="display: flex; align-items: center;">
+                            <el-skeleton-item variant="text" style="width: 260px; height: 32px;"></el-skeleton-item>
+                            <el-skeleton-item variant="text" style="width: 180px; height: 32px; margin-left: auto;"></el-skeleton-item>
+                        </div>
+                    </template>
+                </el-skeleton>
+                <el-row v-else>
                     <el-select v-model="collection.ID" placeholder="Select a collection" clearable @change="onCollectionSelect" style="flex-grow: 1; width: fit-content;">
                         <el-option v-for="item in collection.records" :key="item.ID" :label="item.Name" :value="item.ID"></el-option>
                     </el-select>
@@ -332,22 +380,25 @@ A comprehensive mock API server for development and testing. Supports service ma
                             <el-button :disabled="+collection.ID" :icon="Plus" @click="onCollectionDialogOpen()"></el-button>
                             <el-button :disabled="!collection.ID" :icon="Edit" @click="onCollectionDialogOpen(collection.ID)"></el-button>
                             <el-button :disabled="!collection.ID" :icon="Delete" @click="onCollectionDelete"></el-button>
-                            <el-button :disabled="+collection.ID" :icon="Upload" @click="() => this.$refs.CollectionUploadRef.ref.click()"></el-button><el-upload :auto-upload="false" action="" :on-change="onCollectionImport" :show-file-list="false" accept=".json" style="display: none;"><el-button ref="CollectionUploadRef"></el-button></el-upload>
+                            <el-button :disabled="+collection.ID" :icon="Upload" @click="onCollectionImportOpen"></el-button><el-upload ref="json" :auto-upload="false" action="" :on-change="onCollectionImport" :show-file-list="false" accept=".json" style="display: none;"></el-upload>
                             <el-button :disabled="!collection.ID" :icon="Download" @click="onCollectionExport"></el-button>
                         </el-button-group>
                     </div>
                 </el-row>
             </el-card>
-            <el-card style="margin-top: 32px;">
+            <el-card v-if="collection.ID" style="margin-top: 32px;">
                 <el-row>
                     <el-button-group style="padding-left: 5px;">
                         <el-button :disabled="!collection.ID" :icon="Plus" @click="onServiceDialogOpen()"></el-button>
-                        <el-button :disabled="!collection.ID" :icon="Upload" @click="() => this.$refs.ServiceUploadRef.ref.click()"></el-button><el-upload :auto-upload="false" action="" :on-change="onServiceImport" :show-file-list="false" accept=".har" style="display: none;"><el-button ref="ServiceUploadRef"></el-button></el-upload>
+                        <el-button :disabled="!collection.ID" :icon="Upload" @click="onServiceImportOpen"></el-button><el-upload ref="har" :auto-upload="false" action="" :on-change="onServiceImport" :show-file-list="false" accept=".har" style="display: none;"></el-upload>
                     </el-button-group>
+                    <el-input v-model="service.search" placeholder="Search URL" clearable style="width: 240px; margin-left: auto;"></el-input>
                 </el-row>
                 <el-row style="margin-top: 12px;">
-                    <el-table v-loading="service.loading" :data="service.records" :row-class-name="onServiceClass" @selection-change="(rows) => this.service.selections = rows" @row-click="onServiceSelect">
-                        <el-table-column label="ID" width="60">
+                    <el-skeleton v-if="service.loading" :rows="6" animated></el-skeleton>
+                    <template v-else>
+                        <el-table :data="services">
+                        <el-table-column label="ID" prop="ID" sortable width="80">
                             <template #default="scope">
                                 {{ scope.row.ID }}
                             </template>
@@ -357,7 +408,7 @@ A comprehensive mock API server for development and testing. Supports service ma
                                 {{ scope.row.RequestMethod || "Any" }}
                             </template>
                         </el-table-column>
-                        <el-table-column label="URL" :show-overflow-tooltip="true">
+                        <el-table-column label="URL" prop="RequestURL" sortable :show-overflow-tooltip="true">
                             <template #default="scope">
                                 <el-link type="primary" @click="onServiceDialogOpen(scope.row.ID)">
                                     {{ scope.row.RequestURL }}
@@ -383,8 +434,9 @@ A comprehensive mock API server for development and testing. Supports service ma
                             </template>
                         </el-table-column>
                     </el-table>
-                    <el-pagination layout="total" :total="service.records.length" style="margin-top: 12px;">
-                    </el-pagination>
+                        <el-pagination layout="total" :total="service.records.length" style="margin-top: 12px;">
+                        </el-pagination>
+                    </template>
                 </el-row>
             </el-card>
             <el-dialog v-model="collection.dialog.visible" :fullscreen="collection.dialog.fullscreen">
@@ -395,10 +447,43 @@ A comprehensive mock API server for development and testing. Supports service ma
                 </template>
                 <el-tabs tab-position="left">
                     <el-tab-pane label="Pre-Request Script" lazy>
-                        <monaco-editor v-model="collection.dialog.draft.PreRequestScript" language="typescript"></monaco-editor>
+                        <div style="display: flex; flex-direction: column; height: 100%;">
+                            <div style="flex: 1; min-height: 0;">
+                                <monaco-editor v-model="collection.dialog.draft.PreRequestScript" language="typescript" :types="types"></monaco-editor>
+                            </div>
+                        </div>
                     </el-tab-pane>
                     <el-tab-pane label="Variables" lazy>
                         <monaco-editor v-model="collection.dialog.draft.Variables" language="json"></monaco-editor>
+                    </el-tab-pane>
+                    <el-tab-pane label="Libraries" lazy>
+                        <div style="display: flex; height: 100%;">
+                            <div style="width: 180px; border-right: 1px solid var(--el-border-color); display: flex; flex-direction: column; flex-shrink: 0;">
+                                <div style="display: flex; align-items: center; justify-content: flex-start; padding: 4px 8px;">
+                                    <el-button link :icon="Plus" @click="onLibraryAdd" style="padding: 0; width: 24px;"></el-button>
+                                </div>
+                                <el-scrollbar style="flex: 1;">
+                                    <el-menu v-if="libraries.length" :default-active="active !== null ? 'lib' + active : ''" @select="(index) => active = Number(index.slice(3))" style="border-right: none;">
+                                        <el-menu-item v-for="(lib, index) in libraries" :key="index" :index="'lib' + index" style="display: flex; align-items: center; height: 36px; padding: 0 8px;">
+                                            <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1;">{{ lib.name || "(unnamed)" }}</span>
+                                            <el-button link type="danger" @click.stop="onLibraryRemove(index)" style="padding: 0; width: 24px;">
+                                                <el-icon :size="12"><component :is="Delete"></component></el-icon>
+                                            </el-button>
+                                        </el-menu-item>
+                                    </el-menu>
+                                    <el-empty v-else description="No libraries yet" :image-size="40"></el-empty>
+                                </el-scrollbar>
+                            </div>
+                            <div style="flex: 1; display: flex; flex-direction: column; padding-left: 8px; min-width: 0;">
+                                <template v-if="active !== null && libraries[active]">
+                                    <el-input v-model="libraries[active].name" placeholder="Library name (e.g. util)" style="flex-shrink: 0; margin-bottom: 8px;"></el-input>
+                                    <div style="flex: 1; min-height: 0;">
+                                        <monaco-editor v-model="libraries[active].code" language="javascript" :types="types"></monaco-editor>
+                                    </div>
+                                </template>
+                                <el-empty v-else description="Select a library or click + to add one" style="margin: auto;"></el-empty>
+                            </div>
+                        </div>
                     </el-tab-pane>
                 </el-tabs>
             </el-dialog>
@@ -420,33 +505,90 @@ A comprehensive mock API server for development and testing. Supports service ma
                         <monaco-editor v-model="service.dialog.draft.ResponseHeaders" language="json"></monaco-editor>
                     </el-tab-pane>
                     <el-tab-pane label="Body" lazy>
-                        <monaco-editor v-model="service.dialog.draft.ResponseBody" :language="!!~service.dialog.draft.ResponseHeaders?.indexOf('json') ? 'json5' : 'html'"></monaco-editor>
+                        <monaco-editor v-model="service.dialog.draft.ResponseBody" :language="language"></monaco-editor>
                     </el-tab-pane>
                     <el-tab-pane label="Pre-Response Script" lazy>
-                        <monaco-editor v-model="service.dialog.draft.PreResponseScript" language="typescript"></monaco-editor>
+                        <div style="display: flex; flex-direction: column; height: 100%;">
+                            <div style="flex: 1; min-height: 0;">
+                                <monaco-editor v-model="service.dialog.draft.PreResponseScript" language="typescript" :types="types"></monaco-editor>
+                            </div>
+                        </div>
                     </el-tab-pane>
                 </el-tabs>
             </el-dialog>
         </div>
         <script>
+            const require = (() => {
+                const load = src => {
+                    const map = globalThis.jsloaders || (globalThis.jsloaders = new Map())
+                    if (!map.has(src)) {
+                        map.set(src, new Promise((resolve, reject) => {
+                            const define = window.define
+                            window.define = undefined // 临时摘除 AMD define，避免干扰脚本自身的模块检测
+                            const e = document.createElement("script")
+                            e.src = src
+                            e.addEventListener("load", () => {
+                                if (define) {
+                                    window.define = define // 仅恢复已有的 define，避免 undefined 覆盖 loader 新注册的 define
+                                }
+                                resolve()
+                            })
+                            e.addEventListener("error", () => {
+                                if (define) {
+                                    window.define = define
+                                }
+                                document.body.removeChild(e)
+                                map.delete(src)
+                                console.error("failed to load script:", src)
+                                reject()
+                            })
+                            document.body.append(e)
+                        }))
+                    }
+                    return map.get(src)
+                },
+                    modules = {
+                        monaco: () => load(`https://s4.zstatic.net/ajax/libs/monaco-editor/0.56.0/min/vs/loader.js`).then(() => window.require.config({ paths: { vs: "https://s4.zstatic.net/ajax/libs/monaco-editor/0.56.0/min/vs" } })).then(() => new Promise(resolve => window.require(["vs/editor/editor.main"], resolve))),
+                    }
+                return name => {
+                    if (modules[name]) {
+                        return new Promise(resolve => window[name] ? resolve(window[name]) : modules[name]().then(() => resolve(window[name])))
+                    }
+                    throw new Error(`unknown import: ${name}`)
+                }
+            })()
+        </script>
+        <script>
             const { ElMessage, ElMessageBox, } = ElementPlus
             Vue.createApp({
                 setup() {
-                    const { ref } = Vue
                     const { Check, Delete, Download, Edit, FullScreen, Plus, Position, Upload } = ElementPlusIconsVue
                     return {
                         Check, Delete, Download, Edit, FullScreen, Plus, Position, Upload,
-                        CollectionUploadRef: ref(), ServiceUploadRef: ref(),
                     }
                 },
                 computed: {
-
+                    services() {
+                        return this.service.records.filter(i => String(i.RequestURL ?? "").toLowerCase().includes(this.service.search.toLowerCase()))
+                    },
+                    language() {
+                        const headers = this.parse(this.service.dialog.draft.ResponseHeaders, {}),
+                            contentType = String(Object.entries(headers).find(([k]) => k.toLowerCase() === "content-type")?.[1] ?? "").toLowerCase()
+                        return ["json", "html", "xml"].find(lang => contentType.includes(lang)) ?? "plaintext"
+                    },
+                    types() {
+                        return [
+                            `declare const $: { request: { method: string; url: string; headers: Record<string, string>; query: Record<string, any>; body: any; }; response: { status: number; headers: Record<string, string>; body: any; }; variables: any; session: any; }; declare const require: (name: string) => any;`,
+                            ...[...new Map(this.libraries.filter(l => l.name).map(l => [l.name, l])).values()].map(l => `declare module "${l.name}" {${l.code || ""}}`),
+                        ].filter(s => s.trim()).join("\n")
+                    },
                 },
                 data() {
                     return {
                         collection: {
                             ID: "",
                             records: [],
+                            loading: true,
                             dialog: {
                                 draft: {},
                                 visible: false,
@@ -454,20 +596,26 @@ A comprehensive mock API server for development and testing. Supports service ma
                             },
                         },
                         service: {
-                            ID: "",
                             records: [],
+                            search: "",
+                            loading: true,
                             dialog: {
                                 draft: {},
                                 visible: false,
                                 fullscreen: false,
                             },
                         },
+                        libraries: [],
+                        active: null,
                     }
                 },
                 methods: {
                     fetch(method, table, params = "", data = undefined) {
                         return fetch(`/service/mockd?t=${table}${params && "&" + params}`, {
                             method,
+                            headers: {
+                                "Content-Type": "application/json",
+                            },
                             ...(data && { body: JSON.stringify(data) }),
                         }).then(r => {
                             if (r.status === 200) {
@@ -475,20 +623,25 @@ A comprehensive mock API server for development and testing. Supports service ma
                             }
                             throw new Error(r.statusText)
                         }).then(r => {
-                            return r.data
+                            return r
                         }).catch(e => {
                             ElMessage.error(e.message)
                             throw e
                         })
                     },
-                    toPutData(data, record) {
+                    readFile(file, onLoad) {
+                        const reader = new FileReader()
+                        reader.onload = () => onLoad(reader.result)
+                        reader.readAsText(file, "utf-8")
+                    },
+                    patch(data, record) {
                         const diff = (a, b) => {
                             let start = 0,
                                 enda = a.length, endb = b.length
                             while (start < enda && start < endb && a[start] === b[start]) {
                                 start++
                             }
-                            while (enda < start && endb < start && a[enda - 1] === b[endb - 1]) {
+                            while (enda > start && endb > start && a[enda - 1] === b[endb - 1]) {
                                 enda--
                                 endb--
                             }
@@ -500,19 +653,41 @@ A comprehensive mock API server for development and testing. Supports service ma
                         }
                         return Object.fromEntries(
                             Object.entries(data)
-                                .filter(([k]) => ["ID"].includes(k) || data[k] !== record[k])
+                                .filter(([k]) => data[k] !== record[k])
                                 .map(([k, v]) => {
-                                    if (["ResponseBody", "PreRequestScript"].includes(k)) {
-                                        return [k, diff(record[k], v)]
+                                    if (["ResponseBody", "PreRequestScript", "Libraries"].includes(k)) {
+                                        return [k, diff(record[k] ?? "", v ?? "")]
                                     }
                                     return [k, v]
                                 })
                         )
                     },
+                    parse(text, fallback) {
+                        if (!text) return fallback
+                        try {
+                            return JSON.parse(text)
+                        } catch {
+                            return fallback
+                        }
+                    },
+                    onLibraryAdd() {
+                        this.libraries.push({ name: "", code: "" })
+                        this.active = this.libraries.length - 1
+                    },
+                    onLibraryRemove(index) {
+                        this.libraries.splice(index, 1)
+                        if (this.active === index) {
+                            this.active = null
+                        } else if (this.active !== null && index < this.active) {
+                            this.active--
+                        }
+                    },
 
                     onCollectionLoad() {
+                        this.collection.loading = true
                         return this.fetch("GET", "Collection").then(records => {
                             this.collection.records = records
+                            this.collection.loading = false
                             if (!records.length) {
                                 this.service.records = []
                                 return
@@ -523,48 +698,47 @@ A comprehensive mock API server for development and testing. Supports service ma
                             this.onCollectionSelect()
                         })
                     },
+                    onCollectionImportOpen() {
+                        this.$refs.json.$el.querySelector("input").click()
+                    },
                     onCollectionImport(file) {
-                        const that = this,
-                            reader = new FileReader()
-                        reader.onload = function () {
-                            const { collection, services } = JSON.parse(this.result)
-                            delete(collection.ID)
-                            that.fetch("POST", "Collection", "", collection)
+                        this.readFile(file.raw, result => {
+                            const { collection, services } = JSON.parse(result)
+                            delete collection.ID
+                            this.fetch("POST", "Collection", "", collection)
                                 .then(([CollectionID]) => {
-                                    return that.fetch("POST", "Service", "", services.map(i => {
-                                        delete(i.ID)
+                                    return this.fetch("POST", "Service", "", services.map(i => {
+                                        delete i.ID
                                         i.CollectionID = CollectionID
                                         return i
                                     }))
                                 })
                                 .then(() => {
-                                    that.onCollectionLoad()
+                                    this.onCollectionLoad()
                                 })
-                        }
-                        reader.readAsText(file.raw, "utf-8")
+                        })
                     },
                     onCollectionExport() {
-                        const a = document.createElement("a")
-                        a.href = URL.createObjectURL(new Blob([JSON.stringify({
+                        const link = document.createElement("a")
+                        link.href = URL.createObjectURL(new Blob([JSON.stringify({
                             collection: this.collection.records.find(i => i.ID === this.collection.ID),
                             services: this.service.records,
                         })], { type: "text/plain" }))
-                        a.download = Date.now() + ".json"
-                        a.click()
+                        link.download = Date.now() + ".json"
+                        link.click()
                     },
                     onCollectionDelete() {
-                        return ElMessageBox.confirm("Collection will be deleted permanently. Continue ?", "Warning", {
+                        const name = this.collection.records.find(i => i.ID === this.collection.ID)?.Name
+                        return ElMessageBox.prompt(`Please input "${name}" to confirm deletion`, "Warning", {
                             confirmButtonText: "Confirm",
                             type: "warning",
+                            inputValidator: value => value === name ? true : "Name mismatch",
                             beforeClose: async (action, instance, done) => {
                                 if (action === "confirm") {
                                     instance.confirmButtonLoading = true
                                     instance.confirmButtonText = "Delete..."
-                                    const ID = this.service.records.map(i => i.ID)
-                                    if (ID.length) {
-                                        await this.fetch("DELETE", "Service", `ID=${ID.join(",")}`)
-                                    }
                                     await this.fetch("DELETE", "Collection", `ID=${this.collection.ID}`)
+                                    this.collection.ID = ""
                                     await this.onCollectionLoad()
                                 }
                                 done()
@@ -576,15 +750,19 @@ A comprehensive mock API server for development and testing. Supports service ma
                             Name: new Date().toISOString().replace(/[-T:\.Z]/g, ""),
                             PreRequestScript: "",
                             Variables: "{}",
+                            Libraries: "[]",
                             ...this.collection.records.find(i => i.ID === ID),
                         }
+                        this.libraries = this.parse(this.collection.dialog.draft.Libraries, [])
+                        this.active = this.libraries.length ? 0 : null
                         this.collection.dialog.visible = true
                     },
                     onCollectionDialogSubmit() {
+                        this.collection.dialog.draft.Libraries = JSON.stringify(this.libraries)
                         return Promise.resolve()
                             .then(() => {
                                 if (this.collection.dialog.draft.ID) {
-                                    return this.fetch("PUT", "Collection", `ID=${this.collection.dialog.draft.ID}`, this.toPutData(this.collection.dialog.draft, this.collection.records.find(i => i.ID === this.collection.dialog.draft.ID) ?? {}))
+                                    return this.fetch("PUT", "Collection", `ID=${this.collection.dialog.draft.ID}`, this.patch(this.collection.dialog.draft, this.collection.records.find(i => i.ID === this.collection.dialog.draft.ID) ?? {}))
                                 }
                                 return this.fetch("POST", "Collection", "", this.collection.dialog.draft)
                             })
@@ -594,26 +772,34 @@ A comprehensive mock API server for development and testing. Supports service ma
                             })
                     },
                     onCollectionSelect() {
-                        return !this.collection.ID ? Promise.resolve() : this.fetch("GET", "Service", `CollectionID=${this.collection.ID}`).then(records => {
+                        if (!this.collection.ID) {
+                            this.service.records = []
+                            return Promise.resolve()
+                        }
+                        this.service.loading = true
+                        return this.fetch("GET", "Service", `CollectionID=${this.collection.ID}`).then(records => {
                             this.service.records = records.map(i => {
                                 i.Active = !!i.Active
                                 return i
                             })
+                        }).finally(() => {
+                            this.service.loading = false
                         })
                     },
 
+                    onServiceImportOpen() {
+                        this.$refs.har.$el.querySelector("input").click()
+                    },
                     onServiceImport(file) {
-                        const that = this,
-                            reader = new FileReader(),
-                            cache = this.service.records.filter(i => i.Active).reduce((p, c) => { p[c.RequestURL] = false; return p; }, {})
-                        reader.onload = function () {
-                            return that.fetch("POST", "Service", "", JSON.parse(this.result).log.entries.filter(i => i._resourceType === "xhr").map(i => {
-                                const RequestURL = i.request.url.replace(/^https?:\/\/[^\/]+/, "").replace(/\?.*$/, "")
+                        const cache = this.service.records.filter(i => i.Active).reduce((p, c) => { p[c.RequestURL] = false; return p; }, {})
+                        this.readFile(file.raw, result => {
+                            return this.fetch("POST", "Service", "", JSON.parse(result).log.entries.filter(i => i._resourceType === "xhr").map(i => {
+                                const url = i.request.url.replace(/^https?:\/\/[^\/]+/, "").replace(/\?.*$/, "")
                                 return {
-                                    CollectionID: that.collection.ID,
-                                    Active: cache[RequestURL] ?? !(cache[RequestURL] = false),
+                                    CollectionID: this.collection.ID,
+                                    Active: cache[url] ?? !(cache[url] = false),
                                     RequestMethod: i.request.method,
-                                    RequestURL,
+                                    RequestURL: url,
                                     ResponseCode: i.response.status,
                                     ResponseHeaders: JSON.stringify(i.response.headers.reduce((p, c) => {
                                         p[c.name] = c.value
@@ -622,14 +808,10 @@ A comprehensive mock API server for development and testing. Supports service ma
                                     ResponseBody: i.response.content?.text ?? "",
                                     PreResponseScript: "",
                                 }
-                            })).then(r => that.onCollectionSelect())
-                        }
-                        reader.readAsText(file.raw, "utf-8")
+                            })).then(() => this.onCollectionSelect())
+                        })
                     },
-                    onServiceDelete(...ID) {
-                        if (!ID.length) {
-                            return
-                        }
+                    onServiceDelete(ID) {
                         ElMessageBox.confirm("Service will be deleted permanently. Continue ?", "Warning", {
                             confirmButtonText: "Confirm",
                             type: "warning",
@@ -637,7 +819,7 @@ A comprehensive mock API server for development and testing. Supports service ma
                                 if (action === "confirm") {
                                     instance.confirmButtonLoading = true
                                     instance.confirmButtonText = "Delete..."
-                                    await this.fetch("DELETE", "Service", `ID=${ID.join(",")}`)
+                                    await this.fetch("DELETE", "Service", `ID=${ID}`)
                                         .then(() => {
                                             this.onCollectionSelect()
                                         })
@@ -657,13 +839,14 @@ A comprehensive mock API server for development and testing. Supports service ma
                             PreResponseScript: "",
                             ...this.service.records.find(i => i.ID === ID),
                         }
+                        this.libraries = this.parse(this.collection.records.find(i => i.ID === this.collection.ID)?.Libraries, [])
                         this.service.dialog.visible = true
                     },
                     onServiceDialogSubmit() {
                         return Promise.resolve()
                             .then(() => {
                                 if (this.service.dialog.draft.ID) {
-                                    return this.fetch("PUT", "Service", `ID=${this.service.dialog.draft.ID}`, this.toPutData(this.service.dialog.draft, this.service.records.find(i => i.ID === this.service.dialog.draft.ID) ?? {}))
+                                    return this.fetch("PUT", "Service", `ID=${this.service.dialog.draft.ID}`, this.patch(this.service.dialog.draft, this.service.records.find(i => i.ID === this.service.dialog.draft.ID) ?? {}))
                                 }
                                 return this.fetch("POST", "Service", "", this.service.dialog.draft)
                             })
@@ -681,130 +864,66 @@ A comprehensive mock API server for development and testing. Supports service ma
                 },
                 components: {
                     "monaco-editor": {
-                        template: `<div ref="container" :style="{ width: this.width, height: this.height }"></div>`,
+                        template: `<div ref="container" style="width: 100%; height: 100%;"><div v-if="loading" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--el-text-color-secondary)">Loading…</div></div>`,
                         props: {
-                            modelValue: { type: String, default: "" },
-                            width: { type: String, default: "100%" },
-                            height: { type: String, default: "100%" },
-                            language: { type: String, default: "typescript" },
-                            readOnly: { type: Boolean, default: false },
+                            modelValue: { type: String, default: "", },
+                            language: { type: String, default: "typescript", },
+                            types: { type: String, default: "", },
                         },
-                        emits: [
-                            "update:modelValue",
-                        ],
-                        setup(props, { emit }) {
-                            const container = Vue.ref(),
-                                require = (src) => {
-                                    const map = globalThis.jsloaders || (globalThis.jsloaders = new Map())
-                                    if (!map.has(src)) {
-                                        map.set(src, new Promise((resolve, reject) => {
-                                            const e = document.createElement("script")
-                                            e.src = src
-                                            document.body.append(e)
-                                            e.addEventListener("load", () => resolve(true))
-                                            e.onerror = () => {
-                                                document.body.removeChild(e)
-                                                reject()
-                                            }
-                                        }))
-                                    }
-                                    return map.get(src)
+                        emits: ["update:modelValue",],
+                        data() {
+                            return { loading: true, disposed: false, }
+                        },
+                        watch: {
+                            modelValue(newValue, oldValue) {
+                                if (this.editor && newValue !== oldValue && newValue !== this.editor.getValue()) {
+                                    this.editor.setValue(newValue)
                                 }
-                            require("https://cdn.bootcdn.net/ajax/libs/monaco-editor/0.55.1/min/vs/loader.js")
-                                .then(() => {
-                                    window.require.config({ paths: { vs: "https://cdn.bootcdn.net/ajax/libs/monaco-editor/0.55.1/min/vs" } })
-                                })
-                                .then(() => {
-                                    window.require(["vs/editor/editor.main"], () => {
-                                        monaco.languages.register({ id: "json5" })
-                                        // 定义 json5 语法高亮规则
-                                        monaco.languages.setMonarchTokensProvider("json5", {
-                                            tokenizer: {
-                                                root: [
-                                                    // 单行注释
-                                                    [/\/\/.*/, "comment.single.json5"],
-                                                    // 多行注释
-                                                    [/\/\*/, "comment.block.json5", "@comment"],
-                                                    // 字符串
-                                                    [/'/, "string.quoted.json5", "@stringSingle"], // 单引号
-                                                    [/"/, "string.quoted.json5", "@stringDouble"], // 双引号
-                                                    // 数字
-                                                    [/0x[0-9a-fA-F]+/, "constant.hex.numeric.json5"], // 十六进制
-                                                    [/[+-]?(\d*\.\d+|\d+)([eE][+-]?\d+)?/, "constant.dec.numeric.json5"], // 小数和整数
-                                                    // 关键字常量
-                                                    [/\b(?:true|false|null|Infinity|NaN)\b/, "constant.language.json5"],
-                                                    // 对象和数组的标点符号
-                                                    [/[{}]/, "punctuation.definition.dictionary.json5"],
-                                                    [/\[\]/, "punctuation.definition.array.json5"],
-                                                    [/,/, "punctuation.separator.json5"],
-                                                ],
-                                                comment: [
-                                                    [/[^*]+/, "comment.block.json5"],
-                                                    [/\*\//, "comment.block.json5", "@pop"],
-                                                    [/\*/, "comment.block.json5"],
-                                                ],
-                                                stringSingle: [
-                                                    [/[^\\']+/, "string.quoted.json5"],
-                                                    [/\\./, "constant.character.escape.json5"],
-                                                    [/'/, "string.quoted.json5", "@pop"],
-                                                ],
-                                                stringDouble: [
-                                                    [/[^\\"]+/, "string.quoted.json5"],
-                                                    [/\\./, "constant.character.escape.json5"],
-                                                    [/"/, "string.quoted.json5", "@pop"],
-                                                ],
-                                            },
-                                        })
-                                        // 设置 json5 的自动缩进和括号补全
-                                        monaco.languages.setLanguageConfiguration("json5", {
-                                            autoClosingPairs: [
-                                                { open: "{", close: "}" },
-                                                { open: "[", close: "]" },
-                                                { open: "\"", close: "\"" },
-                                                { open: "'", close: "'" },
-                                            ],
-                                            brackets: [
-                                                ["{", "}"],
-                                                ["[", "]"],
-                                            ],
-                                            surroundingPairs: [
-                                                { open: "{", close: "}" },
-                                                { open: "[", close: "]" },
-                                                { open: "\"", close: "\"" },
-                                                { open: "'", close: "'" },
-                                            ],
-                                            indentationRules: {
-                                                // 缩进规则：在 { 或 [ 后换行增加缩进， } 或 ] 前换行减少缩进
-                                                increaseIndentPattern: /({|\[)[^\}\]]*$/,
-                                                decreaseIndentPattern: /^[ \t]*(\}|\]),?$/,
-                                            },
-                                            comments: {
-                                                lineComment: "//",
-                                                blockComment: ["/*", "*/"],
-                                            },
-                                        })
-                                        const editor = monaco.editor.create(container.value, {
-                                            language: props.language,
-                                            value: props.modelValue,
-                                        })
-                                        if (props.language === "typescript") {
-                                            monaco.languages.typescript.typescriptDefaults.addExtraLib(`declare const $: { request: { body?: any; }; response: { status: number; headers: any; body: any; }; variables: any; [name: string]: any; }`, "global.ts")
-                                        }
-                                        editor.onDidChangeModelContent(() => {
-                                            emit("update:modelValue", editor.getValue())
-                                        })
-                                        editor.updateOptions({ readOnly: props.readOnly ?? false })
-                                        Vue.watch(() => props.modelValue, (newValue, oldValue) => {
-                                            if (newValue !== oldValue && newValue !== editor.getValue()) {
-                                                editor.setValue(newValue)
-                                            }
-                                        })
-                                        new ResizeObserver((e) => editor.layout()).observe(container.value)
+                            },
+                            language: {
+                                immediate: true,
+                                async handler(language) {
+                                    const monaco = await require("monaco")
+                                    if (this.editor) monaco.editor.setModelLanguage(this.editor.getModel(), language)
+                                    const ts = monaco.languages.typescript
+                                    ts.typescriptDefaults.setCompilerOptions({
+                                        target: ts.ScriptTarget?.ESNext ?? 99,
+                                        module: ts.ModuleKind?.ESNext ?? 99,
+                                        moduleResolution: ts.ModuleResolutionKind?.NodeJs ?? 1,
+                                        allowNonTsExtensions: true,
+                                        noEmit: true,
                                     })
-                                })
-                            return { container }
+                                    monaco.languages.json.jsonDefaults.setDiagnosticsOptions({ allowComments: true })
+                                },
+                            },
                         },
-                    }
+                        methods: {
+                            setExtraLibs() {
+                                window.monaco.languages.typescript.typescriptDefaults?.setExtraLibs([{ content: this.types, filePath: "mockd-types.d.ts" }])
+                            },
+                        },
+                        async created() {
+                            const monaco = await require("monaco")
+                            if (this.disposed) return // await 期间组件可能已卸载，续跑时不能再创建编辑器
+                            // this.editor 保持非响应式：Vue 深度劫持 data() 对象，Monaco 实例庞大含循环引用，getValue 触发劫持 getter 撑爆 CPU
+                            // .mts 后缀使脚本作为 ESM 模块编译，多个编辑器 model 的顶层声明互相隔离，避免 redeclare
+                            const model = monaco.editor.createModel(this.modelValue, this.language, monaco.Uri.parse("file:///mockd-" + this.$.uid + ".mts"))
+                            this.editor = monaco.editor.create(this.$refs.container, { model, automaticLayout: true })
+                            this.setExtraLibs()
+                            this.editor.onDidFocusEditorText(() => this.setExtraLibs())
+                            this.editor.onDidChangeModelContent(() => {
+                                this.$emit("update:modelValue", this.editor.getValue())
+                            })
+                            this.loading = false
+                        },
+                        beforeUnmount() {
+                            this.disposed = true
+                            if (this.editor) {
+                                this.editor.getModel()?.dispose()
+                                this.editor.dispose()
+                            }
+                        },
+                    },
                 },
             }).use(ElementPlus).mount("#app")
         </script>
@@ -875,3 +994,4 @@ A comprehensive mock API server for development and testing. Supports service ma
     ```bash
     adb reverse tcp:8090 tcp:8090
     ```
+

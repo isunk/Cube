@@ -26,7 +26,7 @@ func Query(db querier, stmt string, args ...interface{}) ([]map[string]interface
 		row[i] = &dataset[i] // 将每个值的指针放入接口切片中
 	}
 
-	var records []map[string]interface{}
+	records := make([]map[string]interface{}, 0) // 空结果集初始化为空切片而非 nil，避免 JSON 序列化为 null
 	for rows.Next() {
 		rows.Scan(row...)
 		record := make(map[string]interface{})

@@ -37,7 +37,7 @@ func InitHandle(web *embed.FS) {
 	}))
 }
 
-func Success(w http.ResponseWriter, data interface{}) {
+func Success(w http.ResponseWriter, data interface{}, wrap bool) {
 	switch v := data.(type) {
 	case string:
 		fmt.Fprintf(w, "%s", v)
@@ -47,24 +47,27 @@ func Success(w http.ResponseWriter, data interface{}) {
 		w.Write(v)
 	case *builtin.Buffer:
 		w.Write(*v)
-	default: // map[string]interface[]
-		if r, ok := v.(*builtin.ServiceResponse); ok { // 自定义响应
+	default: // map[string]interface{}
+		if r, ok := v.(*builtin.ServiceResponse); ok { // 自定义响应：写入状态码/响应头/Cookie 后，递归以原始消息体输出，不套 code/message 信封
 			d := builtin.PreHandleServiceResponse(w, r)
-			if _, ok := d.(*builtin.ServiceResponse); !ok {
-				Success(w, d)
+			if d == nil { // 自定义响应未指定消息体，仅返回状态码与响应头
 				return
-			} else {
-				v = d
 			}
+			Success(w, d, false)
+			return
 		}
 		w.Header().Set("Content-Type", "application/json")
 		enc := json.NewEncoder(w)
 		enc.SetEscapeHTML(false) // 见 https://pkg.go.dev/encoding/json#Marshal，字符串值编码为强制为有效 UTF-8 的 JSON 字符串，用 Unicode 替换符文替换无效字节。为了使 JSON 能够安全地嵌入 HTML 标记中，字符串使用 HTMLEscape 编码，它将替换 `<`、`>`、`&`、`U+2028` 和 `U+2029`，并转义到 `\u003c`、`\u003e`、`\u0026`、`\u2028` 和 `\u2029`。在使用编码器时，可以通过调用 SetEscapeHTML(false) 禁用此替换。
-		enc.Encode(map[string]interface{}{
-			"code":    "0",
-			"message": "success",
-			"data":    v, // 注：这里的 data 如果为 []byte 类型或包含 []byte 类型的属性，在通过 json 序列化后将会被自动转码为 base64 字符串
-		})
+		if wrap {
+			enc.Encode(map[string]interface{}{
+				"code":    "0",
+				"message": "success",
+				"data":    v, // 注：这里的 data 如果为 []byte 类型或包含 []byte 类型的属性，在通过 json 序列化后将会被自动转码为 base64 字符串
+			})
+		} else {
+			enc.Encode(v)
+		}
 	}
 }
 

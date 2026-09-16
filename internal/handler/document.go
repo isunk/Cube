@@ -22,5 +22,5 @@ func HandleDocument(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	Success(w, string(content))
+	Success(w, string(content), true)
 }

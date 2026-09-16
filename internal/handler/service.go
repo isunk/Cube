@@ -94,5 +94,5 @@ func HandleService(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	Success(w, data)
+	Success(w, data, true)
 }

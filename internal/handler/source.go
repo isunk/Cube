@@ -58,7 +58,7 @@ func HandleSource(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !returnless {
-		Success(w, data)
+		Success(w, data, true)
 	}
 }
 
