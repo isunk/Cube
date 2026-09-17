@@ -468,7 +468,13 @@
                             original = monaco.editor.createModel(this.content, lang),
                             modified = monaco.editor.createModel(content, lang)
                         e.setModel({ original, modified, })
-                        // 这里没有通过回调在关闭弹窗时释放资源（`return () => { e.dispose(); original.dispose(); modified.dispose(); }`），是因为 Monaco Editor 在高版本（＞ 0.49.*）中存在冲突：先创建 editor，再创建和释放 diff editor 时，原 editor（例如鼠标右键拉起菜单时）会出现异常："InstantiationService has been disposed"，详见 https://github.com/microsoft/monaco-editor/issues/4612
+                        // 关闭弹窗时解绑并销毁 diff 模型：否则两个临时模型会残留在类型检查程序中，与主模型内容重复，导致复现路径「保存 → 关闭 diff 弹窗 → 再次编辑源码」时触发 "Duplicate function implementation"
+                        // 只销毁模型、不调用 e.dispose()（会销毁共享的 InstantiationService，使主编辑器的右键菜单报 "InstantiationService has been disposed"），详见 https://github.com/microsoft/monaco-editor/issues/4612
+                        return () => {
+                            e.setModel(null)
+                            original.dispose()
+                            modified.dispose()
+                        }
                     },
                     confirm: () => {
                         const compiled = editor.getModel().getLanguageId() !== "typescript" ? "" : this.compile(content, this.input.name)
