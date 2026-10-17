@@ -1,6 +1,6 @@
 # GraphQL
 
-A GraphQL-like query and mutation engine with schema-based data access. Supports nested queries with relationship resolution, conditional filtering with multiple operators, pagination, and automatic foreign key handling. Provides abstract base class for custom database adapters.
+A GraphQL-like query and mutation engine with schema-based data access. Supports nested queries with relationship resolution, conditional filtering with multiple operators, pagination with optional unlimited depth, and automatic foreign key handling. Mutations run in a transactional scope with commit and rollback hooks, and include DSL validation plus chunked IN clauses for large datasets. Provides abstract base class for custom database adapters.
 
 ```typescript
 //?name=node_modules/graphql&type=module
@@ -53,13 +53,13 @@ type TableQueryDSL = {
     conditions?: ConditionQueryDSL[];
     options?: {
         skip?: number;
-        limit?: number;
+        limit?: number | null;
     };
 }
 
 type ConditionQueryDSL = {
     field: string;
-    operator: "eq" | "gt" | "ge" | "lt" | "le" | "ne" | "like" | "contains";
+    operator: "eq" | "gt" | "ge" | "lt" | "le" | "ne";
     value: object;
 } | {
     field: string;
@@ -75,7 +75,16 @@ type ExtendedQueryDSL = {
             operator: "in";
             value: object[];
         }[];
+        options?: {
+            skip?: number;
+            limit?: number | null;
+        };
     }
+}
+
+type SelectClauses = {
+    selects: { [name: string]: { alias?: string; display?: boolean; isForeignKey?: true; } };
+    subrequests: QueryDSL;
 }
 
 //#endregion
@@ -94,7 +103,7 @@ type MutationRequestData = {
     /**
      * 数据库对象
      */
-    dataset?: Record;
+    dataset: Record;
 }
 
 type MutationRequests = {
@@ -106,11 +115,11 @@ type MutationRequests = {
         /**
          * 前置子请求
          */
-        subrequests0?: MutationRequests;
+        subrequests0: MutationRequests;
         /**
          * 后置子请求
          */
-        subrequests1?: MutationRequests;
+        subrequests1: MutationRequests;
     }
 };
 
@@ -126,14 +135,20 @@ export abstract class GraphQL {
     //#region query
 
     public query(dsl: QueryDSL) {
-        return this.doQuery(dsl, <SubSchema>this.schema, null);
+        if (dsl == null) {
+            throw new Error(`dsl can not be null`);
+        }
+        if (typeof dsl !== "object" || dsl instanceof Array) {
+            throw new Error(`dsl must be a object`);
+        }
+        return this.doQuery(dsl, <SubSchema>this.schema);
     }
 
     private doQuery(dsl: QueryDSL, schema: SubSchema, exdsl?: ExtendedQueryDSL) {
         return Object.keys(dsl).reduce((result: Record, name: string) => {
             // 查询表模型
             const model = schema[name];
-            if (!model) {
+            if (!model || !this.ownProperty(schema, name)) {
                 throw new Error(`can not find ${name} in schema`);
             }
             if (!("table" in model)) {
@@ -149,35 +164,43 @@ export abstract class GraphQL {
             // 构建查询条件集合
             const { wheres, params } = this.toSqlWhereClauses(<ConditionQueryDSL[]>request.conditions);
 
-            // 查询
-            const datasets = this.onSelect(`select ${Object.keys(selects).join(", ")} from ${model.table} where ${["1 = 1"].concat(wheres).join(" and ")} limit ${request.options.skip},${request.options.limit}`, { params }),
+            // limit 为 null 表示不限制条数，此时 skip 一并忽略
+            const datasets = this.onSelect(`select ${Object.keys(selects).join(", ")} from ${model.table} where ${["1 = 1"].concat(wheres).join(" and ")}${request.options.limit == null ? "" : ` limit ${request.options.skip},${request.options.limit}`}`, { params }),
                 records = this.toQueryRecords(datasets, model, { selects, subrequests });
 
-            result[name] = schema == this.schema
+            result[name] = schema === this.schema
                 ? records.map(r => r.data) // 隐藏根元素的 keys 记录
                 : records;
             return result;
         }, {});
     }
 
-    private toQueryRequest(dsl: QueryDSL, name: string, model: SubTableSchema, exdsl: ExtendedQueryDSL) {
+    private toQueryRequest(dsl: QueryDSL, name: string, model: SubTableSchema, exdsl?: ExtendedQueryDSL) {
         const tdsl = this.toTableQueryDSL(dsl, name, model);
+
+        if (tdsl.properties && !Object.keys(tdsl.properties).length) {
+            throw new Error(`properties of ${name} can not be empty`);
+        }
+
+        if (tdsl.conditions && !Array.isArray(tdsl.conditions)) {
+            throw new Error(`conditions of ${name} must be an array`);
+        }
 
         return {
             properties: tdsl.properties || model.properties,
-            options: {
-                skip: 0,
-                limit: 5000,
-                ...tdsl.options,
-            },
+            options: this.toQueryOptions(name, tdsl.options, exdsl?.[name]?.options),
             conditions: (tdsl.conditions || [])
-                .map(({ field, operator, value }) => {
+                .map(condition => {
+                    if (condition == null) {
+                        throw new Error(`condition of ${name} can not be null`);
+                    }
+                    const { field, operator, value } = condition;
                     // 校验 field
                     if (!field) {
                         throw new Error(`field of condition can not be null or empty`);
                     }
                     const column = model.properties[field];
-                    if (!column) {
+                    if (!column || !this.ownProperty(model.properties, field)) {
                         throw new Error(`field ${field} does not exist`);
                     }
                     if (!("column" in column)) {
@@ -194,13 +217,50 @@ export abstract class GraphQL {
         };
     }
 
+    private toQueryOptions(
+        name: string,
+        options: TableQueryDSL["options"],
+        extendedOptions: ExtendedQueryDSL[string]["options"],
+    ) {
+        const merged = {
+            skip: 0,
+            limit: 5000 as number | null,
+            ...extendedOptions,
+            ...options,
+        };
+
+        if (!Number.isInteger(merged.skip) || merged.skip < 0) {
+            throw new Error(`skip of ${name} must be a non-negative integer`);
+        }
+        if (merged.limit != null && (!Number.isInteger(merged.limit) || merged.limit <= 0)) {
+            throw new Error(`limit of ${name} must be a positive integer`);
+        }
+
+        return {
+            skip: merged.skip,
+            limit: merged.limit,
+        };
+    }
+
     private toTableQueryDSL(dsl: QueryDSL, name: string, model: SubTableSchema): TableQueryDSL {
         const v = dsl[name];
 
-        // 如果请求的 properties 为 null，表示默认查询所有字段
-        if (!v) {
+        // 仅 null 与 undefined 表示默认查询所有字段，0、""、false 等假值属于形状错误
+        if (v == null) {
             return {
                 properties: model.properties,
+            };
+        }
+
+        // 查询侧不支持集合与原始类型，否则后续会报出误导性的 property 0 does not exist
+        if (typeof v !== "object" || v instanceof Array) {
+            throw new Error(`request ${name} must be a object`);
+        }
+
+        // 引用 schema 子模型对象表示查询全部字段，默认全量投影路径也会传入
+        if (this.ownProperty(v, "table") && this.ownProperty(v, "properties")) {
+            return {
+                properties: (<SubTableSchema>v).properties,
             };
         }
 
@@ -210,23 +270,45 @@ export abstract class GraphQL {
                 properties: v,
                 conditions: Object.keys(v)
                     .reduce((p, c) => {
-                        // 如果 record 的属性值不为 null，则将该属性值作为查询条件
-                        if (v[c] !== null && typeof v[c] !== "object") {
-                            p.push({ field: c, operator: "eq", value: <object>v[c] });
+                        const value = (v as Record)[c];
+                        // null 与 undefined 均表示不处理该属性，与 mutate 语义一致
+                        if (value === null || value === undefined) {
+                            return p;
+                        }
+                        // 数组条件原本会被静默丢弃并退化为无过滤的全表查询
+                        if (value instanceof Array) {
+                            throw new Error(`condition of ${c} can not be an array`);
+                        }
+                        // 原始类型作为相等条件，对象值留给子模型处理
+                        if (typeof value !== "object") {
+                            p.push({ field: c, operator: "eq", value: <object>value });
                         }
                         return p;
                     }, [] as ConditionQueryDSL[]),
             };
         }
 
+        // 表单形式只接受 properties、conditions、options，多余键静默忽略导致全表扫描
+        for (const key of Object.keys(v)) {
+            if (key !== "properties" && key !== "conditions" && key !== "options") {
+                throw new Error(`unknown key ${key} of ${name}, expected properties, conditions or options`);
+            }
+        }
+        if (v.properties != null && (typeof v.properties !== "object" || v.properties instanceof Array)) {
+            throw new Error(`properties of ${name} must be a object`);
+        }
+        if (v.options != null && (typeof v.options !== "object" || v.options instanceof Array)) {
+            throw new Error(`options of ${name} must be a object`);
+        }
+
         return <TableQueryDSL>v;
     }
 
-    private toSqlSelectClauses(properties: QueryDSL, foreignKeys: string[], model: SubTableSchema) {
+    private toSqlSelectClauses(properties: QueryDSL, foreignKeys: string[], model: SubTableSchema): SelectClauses {
         // 初始化子请求
         const subrequests = <QueryDSL>{};
 
-        const selects = {} as { [name: string]: { alias?: string; display?: boolean; isForeignKey?: true; } };
+        const selects = {} as SelectClauses["selects"];
 
         // 处理外键所在的列
         for (const n of foreignKeys) {
@@ -234,10 +316,11 @@ export abstract class GraphQL {
         }
 
         // 处理属性所在的列
+        const columnOwner: { [column: string]: string } = {};
         for (const n in properties) {
             const property = model.properties[n];
 
-            if (!property) {
+            if (!property || !this.ownProperty(model.properties, n)) {
                 throw new Error(`property ${n} does not exist`);
             }
             if ("table" in property) { // 如果当前属性是子模型
@@ -246,6 +329,12 @@ export abstract class GraphQL {
                 subrequests[n] = properties[n];
             } else { // 否则当前属性是列
                 const c = property.column;
+                // 同一列被两个属性映射时，后者的别名会覆盖前者，结果会静默丢字段
+                const owner = columnOwner[c];
+                if (owner) {
+                    throw new Error(`property ${owner} and ${n} map to the same column ${c}`);
+                }
+                columnOwner[c] = n;
                 selects[c] = {
                     ...selects[c],
                     alias: n,
@@ -269,31 +358,46 @@ export abstract class GraphQL {
                 throw new Error(`value of condition ${condition.field} can not be null`);
             }
 
-            const operator: string = { eq: "=", gt: ">", ge: ">=", lt: "<", le: "<=", ne: "<>" }[<string>condition.operator] || condition.operator;
-            switch (operator) {
+            const operator = condition.operator as string;
+            switch (condition.operator) {
                 case "in":
-                    const values = (<object[]>condition.value).filter(v => v != null); // 去除 null 值
-                    if (values.length) {
-                        wheres.push(`${condition.field} ${operator} (${values.map(_ => "?").join(", ")})`);
+                    if (!Array.isArray(condition.value)) {
+                        throw new Error(`value of condition ${condition.field} must be an array for operator in`);
+                    }
+                    const values = condition.value.filter(v => v != null); // 去除 null 值
+                    if (!values.length) {
+                        // 全部被过滤时不能省略条件，否则会退化成无过滤的全表扫描
+                        wheres.push("1 = 0");
+                        break;
+                    }
+                    const chunkSize = this.inClauseChunkSize;
+                    if (chunkSize <= 0 || values.length <= chunkSize) {
+                        wheres.push(`${condition.field} in (${values.map(_ => "?").join(", ")})`);
                         params.push(...values);
+                    } else {
+                        // 超过单条 IN 的变量上限时按块拆分并用 OR 合并，避免触发驱动的参数数量限制
+                        const pieces: string[] = [];
+                        for (let i = 0; i < values.length; i += chunkSize) {
+                            const part = values.slice(i, i + chunkSize);
+                            pieces.push(`${condition.field} in (${part.map(_ => "?").join(", ")})`);
+                            params.push(...part);
+                        }
+                        wheres.push(`(${pieces.join(" or ")})`);
                     }
                     break;
-                case "=":
-                case ">":
-                case ">=":
-                case "<":
-                case "<=":
-                case "<>":
-                case "like":
-                    wheres.push(`${condition.field} ${operator} ?`);
+                case "eq":
+                case "gt":
+                case "ge":
+                case "lt":
+                case "le":
+                case "ne": {
+                    const op = { eq: "=", gt: ">", ge: ">=", lt: "<", le: "<=", ne: "<>" }[condition.operator];
+                    wheres.push(`${condition.field} ${op} ?`);
                     params.push(condition.value);
                     break;
-                case "contains":
-                    wheres.push(`${condition.field} like ?`);
-                    params.push("%" + condition.value.replace(/(%|_)/g, "\\$1") + "%"); // 对字符 "%" 、"_" 转义
-                    break;
+                }
                 default:
-                    throw new Error(`operator ${condition.operator} is not supported`);
+                    throw new Error(`operator ${operator} is not supported`);
             }
         }
 
@@ -303,12 +407,12 @@ export abstract class GraphQL {
         };
     }
 
-    private toQueryRecords(datasets: object[], model: SubTableSchema, { selects, subrequests }: ReturnType<typeof this.toSqlSelectClauses>) {
+    private toQueryRecords(datasets: Record[], model: SubTableSchema, { selects, subrequests }: SelectClauses): { data: Record; keys: Record; }[] {
         if (!datasets.length) {
             return [];
         }
 
-        const records = [];
+        const records: { data: Record; keys: Record; }[] = [];
 
         // 遍历子请求，构造外键和外键关联条件
         const subexrequests: ExtendedQueryDSL = {};
@@ -320,7 +424,9 @@ export abstract class GraphQL {
                     field: c,
                     operator: "in",
                     value: this.uniq(datasets.map(d => <object>d[p])),
-                }]
+                }],
+                // 子查询必须取回该父对象集合的全部子行，不能被默认分页截断
+                options: { limit: null },
             };
         }
 
@@ -333,7 +439,8 @@ export abstract class GraphQL {
             const { column: c } = (model.properties[n] as SubTableSchema).joined;
             subdatasetsmap[n] = {};
             for (const subdataset of subdatasets[n]) {
-                if (!subdataset.keys?.[c]) {
+                // 外键列缺失或驱动未返回该列时，按外键分组会静默出错，因此在此中断
+                if (subdataset.keys?.[c] === undefined) {
                     throw new Error(`property ${c} in sub hide dataset does not exist`);
                 }
                 subdatasetsmap[n][subdataset.keys[c]] = subdatasetsmap[n][subdataset.keys[c]] || [];
@@ -358,14 +465,23 @@ export abstract class GraphQL {
             for (const n in subdatasetsmap) {
                 const submodel = model.properties[n] as SubTableSchema;
 
-                // 根据外键过滤子对象集合，并赋值给父对象
-                dataset[n] = subdatasetsmap[n][dataset[submodel.joined.parent]];
+                // 根据外键过滤子对象集合
+                const sub = subdatasetsmap[n][dataset[submodel.joined.parent]];
 
-                if (submodel.joined.isCollection === false) { // 如果子模型非集合，则返回第一个子对象
-                    dataset[n] = (<object[]>dataset[n])?.pop();
+                // 子对象赋值只写入结果对象，避免改写驱动返回的原始行
+                let value: object | undefined;
+                if (sub) {
+                    if (submodel.joined.isCollection === false) { // 如果子模型非集合，则只允许匹配到一条
+                        if ((<object[]>sub).length > 1) {
+                            throw new Error(`property ${n} of ${model.table} is not a collection but matched ${(<object[]>sub).length} subdatasets`);
+                        }
+                        value = (<object[]>sub)[0];
+                    } else {
+                        value = sub;
+                    }
                 }
 
-                data[n] = <unknown>dataset[n]; // 子模型需要作为结果返回
+                data[n] = value; // 子模型需要作为结果返回
             }
 
             records.push({ data, keys });
@@ -379,13 +495,31 @@ export abstract class GraphQL {
     //#region mutate
 
     public mutate(dsl: MutationDSL) {
+        if (dsl == null) {
+            throw new Error(`dsl can not be null`);
+        }
+        if (typeof dsl !== "object" || dsl instanceof Array) {
+            throw new Error(`dsl must be a object`);
+        }
+
         const requests: MutationRequests = {};
 
         // 构造请求
         this.toMutationRequests(dsl, <SubSchema>this.schema, requests);
 
-        // 执行请求
-        this.doMutateRequests(requests, <SubSchema>this.schema);
+        // 执行请求，任一步骤失败则回滚已写入的数据
+        this.onBegin();
+        try {
+            this.doMutateRequests(requests, <SubSchema>this.schema);
+            this.onCommit();
+        } catch (e) {
+            try {
+                this.onRollback();
+            } catch {
+                // 回滚失败不应掩盖触发回滚的原始错误
+            }
+            throw e;
+        }
 
         return dsl;
     }
@@ -394,7 +528,7 @@ export abstract class GraphQL {
         for (const name in dsl) {
             // 查询表模型
             const model = schema[name];
-            if (!model) {
+            if (!model || !this.ownProperty(schema, name)) {
                 throw new Error(`${name} in schema does not exist`);
             }
             if (!("table" in model)) {
@@ -416,7 +550,8 @@ export abstract class GraphQL {
                     if ("column" in property) { // 如果是列属性，跳过不处理
                         return false;
                     }
-                    if ((<ColumnSchema>property.properties[Object.keys(property.properties).find(sn => (<ColumnSchema>property.properties[sn]).column === property.joined.column) || ""])?.isPrimaryKey !== true) {
+                    const joined = this.joinedProperty(property);
+                    if (!joined || (<ColumnSchema>property.properties[joined]).isPrimaryKey !== true) {
                         return false;
                     }
                     if (property.joined.isCollection !== false) { // 前置子请求必须为非集合元素
@@ -427,22 +562,29 @@ export abstract class GraphQL {
 
             const records = dsl[name] instanceof Array ? <Record[]>dsl[name] : [dsl[name]],
                 data: MutationRequestData[] = requests[name]?.data || [], // 对象集合
-                subrequests0: MutationRequests = {}, // 前置子请求，需要优先入库以生成主键
-                subrequests1: MutationRequests = {}; // 后置子请求，需要依赖当前请求的主键入库
+                // 批量父对象下同名模型多次进入，子请求桶必须复用旧值累加，否则前一批的孙对象静默丢失
+                subrequests0: MutationRequests = requests[name]?.subrequests0 || {}, // 前置子请求，需要优先入库以生成主键
+                subrequests1: MutationRequests = requests[name]?.subrequests1 || {}; // 后置子请求，需要依赖当前请求的主键入库
 
             for (const record of records) {
                 if (!record) {// 原始请求对象
                     throw new Error("request data can not be null");
                 }
+                // 数组内原始类型元素会走进 record 遍历，报出误导性的 property 0 does not exist 或 no writable fields
+                if (typeof record !== "object" || record instanceof Array) {
+                    throw new Error(`request data of ${name} must be a object`);
+                }
 
-                const dataset = {}; // 数据库对象
+                const dataset: Record = {}; // 数据库对象
+                let hasSubrequest = false; // 当前记录是否携带子请求
 
                 for (const subname in record) {
                     const property = model.properties[subname];
-                    if (!property) {
+                    if (!property || !this.ownProperty(model.properties, subname)) {
                         throw new Error(`property ${subname} in schema ${name} does not exist`);
                     }
-                    if (!record[subname]) {
+                    // null 表示不处理该属性，undefined 表示未提供；其余值（含 0、""、false）都需要写入
+                    if (record[subname] === undefined || record[subname] === null) {
                         continue;
                     }
 
@@ -452,8 +594,9 @@ export abstract class GraphQL {
                         continue;
                     }
 
-                    if ((property.joined.isCollection !== false) !== (record[subname] instanceof Array)) { // isCollection 为 true 或 null 均表示集合类型
-                        throw new Error(`subrequest ${subname} ${property.joined.isCollection ? "must" : "can not"} be a collection`);
+                    const isCollection = property.joined.isCollection !== false; // isCollection 为 true 或 null 均表示集合类型
+                    if (isCollection !== (record[subname] instanceof Array)) {
+                        throw new Error(`subrequest ${subname} ${isCollection ? "must" : "can not"} be a collection`);
                     }
 
                     const subdsl = {
@@ -461,13 +604,25 @@ export abstract class GraphQL {
                     };
 
                     // 缓存前置子请求
-                    if (!!~(propertiesOfSubPrimaryKey.indexOf(subname))) { // 如果该属性是子模型，并且子模型的主键关联父模型，则需要先保存子对象以生成子对象主键
+                    if (propertiesOfSubPrimaryKey.includes(subname)) { // 如果该属性是子模型，并且子模型的主键关联父模型，则需要先保存子对象以生成子对象主键
                         this.toMutationRequests(subdsl, model.properties, subrequests0);
+                        hasSubrequest = true;
                         continue;
                     }
 
                     // 缓存后置子请求
                     this.toMutationRequests(subdsl, model.properties, subrequests1);
+                    hasSubrequest = true;
+                }
+
+                // 无可写字段且无子请求时生成非法 SQL；子请求只能按当前记录判断
+                if (!Object.keys(dataset).length && !hasSubrequest) {
+                    throw new Error(`request ${name} has no writable fields`);
+                }
+
+                // 同一记录对象重复出现会让外键回填命中多个条目，产生错挂与重复插入
+                if (data.some(d => d.record === record)) {
+                    throw new Error(`the same record object of ${name} can not be referenced more than once`);
                 }
 
                 data.push({
@@ -493,12 +648,16 @@ export abstract class GraphQL {
             this.doMutateRequests(subrequests0, model.properties);
             for (const subname in subrequests0) {
                 const submodel = <SubTableSchema>model.properties[subname],
-                    primaryKey = Object.keys(submodel.properties).find(i => (submodel.properties[i] as ColumnSchema).column === submodel.joined.column) || "";
+                    primaryKey = this.joinedProperty(submodel);
                 // 遍历对象，将子对象以及子对象主键值回写至对象中
                 for (const { record, dataset } of data) {
                     const subrecord = <Record>record[subname];
-                    if (!subrecord) {
+                    if (subrecord === undefined || subrecord === null) {
                         continue;
+                    }
+                    // 子主键缺失时父表外键会被静默写入 null，与后置方向校验不对称
+                    if (subrecord[primaryKey] == null) {
+                        throw new Error(`value of ${submodel.joined.column} is required`);
                     }
                     dataset[submodel.joined.parent] = <unknown>subrecord[primaryKey];
                 }
@@ -510,7 +669,13 @@ export abstract class GraphQL {
             // 遍历对象，将对象以及对象主键值回写至后置子请求中
             for (const subname in subrequests1) {
                 const submodel = <SubTableSchema>model.properties[subname];
+                const subPk = this.modelPrimaryKey(submodel);
                 for (const { record, dataset } of data) {
+                    // 批量请求中部分父对象可能未提供该子属性
+                    if (record[subname] === undefined || record[subname] === null) {
+                        continue;
+                    }
+
                     const s = subrequests1[subname].data
                         .filter(d => {
                             if (submodel.joined.isCollection === false) {
@@ -523,10 +688,16 @@ export abstract class GraphQL {
                         continue;
                     }
 
-                    if (!dataset[submodel.joined.parent]) {
+                    // 仅新增子对象需要回填外键；自带主键的子对象表示更新，外键列保持原值与类型
+                    const pendings = s.filter(o => !(subPk && subPk.column in o.dataset));
+                    if (!pendings.length) {
+                        continue;
+                    }
+                    // 父对象主键必须已知，undefined 与 null 都表示缺失；0、"" 等假值仍是合法主键
+                    if (dataset[submodel.joined.parent] == null) {
                         throw new Error(`value of ${submodel.joined.parent} is required`);
                     }
-                    s.forEach(o => {
+                    pendings.forEach(o => {
                         o.dataset[submodel.joined.column] = <unknown>dataset[submodel.joined.parent]; // 将外键塞入子对象中
                     });
                 }
@@ -543,17 +714,16 @@ export abstract class GraphQL {
         }
 
         // 找出当前模型的主键
-        const primaryKey = Object.keys(model.properties).find(n => (model.properties[n] as ColumnSchema).isPrimaryKey === true);
-        if (!primaryKey) {
+        const pk = this.modelPrimaryKey(model);
+        if (!pk) {
             throw new Error(`primary key of ${name} in schema does not exist`);
         }
-        const primaryKeyColumn = <ColumnSchema>model.properties[primaryKey];
 
-        // 将请求对象分类为需要新增的数据集和需要更新的数据集
+        // 以列是否存在区分新增/更新，假值主键仍是更新
         const data2insert: MutationRequestData[] = [],
             data2update: MutationRequestData[] = [];
         for (const d of data) {
-            if (d.dataset?.[primaryKeyColumn.column]) {
+            if (pk.column in d.dataset) {
                 data2update.push(d);
             } else {
                 data2insert.push(d);
@@ -562,16 +732,17 @@ export abstract class GraphQL {
 
         if (data2insert.length) {
             const ids = this.onInsert(model.table, data2insert.map(d => d.dataset));
-            for (let i = 0; i < ids.length; i++) {
+            if (!Array.isArray(ids) || ids.length !== data2insert.length) {
+                throw new Error(`onInsert of ${name} must return an array of ${data2insert.length} primary keys`);
+            }
+            for (let i = 0; i < data2insert.length; i++) {
                 // 回写 id 至原始请求对象和数据库对象中
-                data2insert[i].record[primaryKey] = ids[i];
-                if (data2insert[i].dataset) {
-                    data2insert[i].dataset[primaryKeyColumn.column] = ids[i];
-                }
+                data2insert[i].record[pk.property] = ids[i];
+                data2insert[i].dataset[pk.column] = ids[i];
             }
         }
         if (data2update.length) {
-            this.onUpdate(model.table, data2update.map(d => d.dataset), primaryKeyColumn.column);
+            this.onUpdate(model.table, data2update.map(d => d.dataset), pk.column);
         }
     }
 
@@ -581,11 +752,49 @@ export abstract class GraphQL {
         return [...new Set(arr)];
     }
 
+    // 以自有属性判定查表结果，避免 toString、__proto__ 等原型链成员被误认为 schema 条目
+    private ownProperty(owner: object, name: string) {
+        return Object.prototype.hasOwnProperty.call(owner, name);
+    }
+
+    // 子模型中列名为父模型关联列的属性名（即子模型持有父模型主键值的属性）
+    private joinedProperty(model: SubTableSchema) {
+        return Object.keys(model.properties)
+            .filter(n => (<ColumnSchema>model.properties[n]).column === model.joined.column)
+            .pop() || "";
+    }
+
+    // 模型自身声明的主键
+    private modelPrimaryKey(model: SubTableSchema) {
+        const property = Object.keys(model.properties)
+            .filter(n => (<ColumnSchema>model.properties[n]).isPrimaryKey === true)
+            .pop();
+        return property
+            ? { property, column: (<ColumnSchema>model.properties[property]).column }
+            : undefined;
+    }
+
+    // 单条 IN 子句的变量上限，超过后按块拆分用 OR 合并；设为 0 不分块，默认 999 贴合 SQLite
+    protected inClauseChunkSize = 999;
+
     protected abstract onSelect(stmt: string, options: { params: object[]; }): object[];
 
     protected abstract onInsert(table: string, datasets: object[]): string[];
 
     protected abstract onUpdate(table: string, datasets: object[], primaryKey: string): void;
+
+    // 变更事务钩子，默认无事务支持
+    protected onBegin() {
+        return null;
+    }
+
+    protected onCommit() {
+        return null;
+    }
+
+    protected onRollback() {
+        return null;
+    }
 }
 
 export class MyGraphQL extends GraphQL {
@@ -612,6 +821,19 @@ export class MyGraphQL extends GraphQL {
         datasets.forEach(d => {
             this.db.exec(`update ${table} set ${Object.keys(d).filter(n => n !== primaryKey).map(n => `${n} = ?`).join(", ")} where ${primaryKey} = ?`, ...Object.keys(d).filter(n => n !== primaryKey).map(i => d[i]).concat([d[primaryKey]]));
         });
+    }
+
+    // 变更事务钩子，确保批量写入的原子性
+    protected onBegin() {
+        this.db.exec("begin");
+    }
+
+    protected onCommit() {
+        this.db.exec("commit");
+    }
+
+    protected onRollback() {
+        this.db.exec("rollback");
     }
 }
 ```
