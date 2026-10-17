@@ -528,14 +528,14 @@ export default {
     .el-dialog .el-input-group__prepend .el-checkbox-group {
         margin: 0 -20px;
     }
-    .el-dialog .el-input-group__prepend .el-checkbox-button__inner {
+    .el-dialog .el-input-group__prepend .el-checkbox-group :deep(.el-checkbox-button__inner) {
         border-right: 0;
         border-top-right-radius: 0 !important;
         border-bottom-right-radius: 0 !important;
         text-decoration: line-through;
         color: var(--el-disabled-text-color);
     }
-    .el-dialog .el-input-group__prepend .is-checked .el-checkbox-button__inner {
+    .el-dialog .el-input-group__prepend .el-checkbox-group :deep(.is-checked .el-checkbox-button__inner) {
         text-decoration: none;
         color: white;
     }
