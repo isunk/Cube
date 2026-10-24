@@ -254,13 +254,28 @@ A comprehensive mock API server for development and testing. Supports service ma
                 if (!lib) throw new Error(`Module '${name}' not found`)
                 const exported: string[] = []
                 let code = lib.code
-                    .replace(/export\s+(function|class|const|let|var)\s+([$A-Za-z_]\w*)/g, (_, kw, n) => { exported.push(n); return `${kw} ${n}` })
-                    .replace(/export\s*\{([^}]+)\}/g, (_, names) => {
-                        names.split(",").map((s: string) => {
-                            const [orig, alias] = s.trim().split(/\s+as\s+/)
-                            exported.push(alias ? `${alias}: ${orig}` : orig)
-                        })
+                    .replace(/export\s+(?:\{[^}]*\}|\*(?:\s*as\s+([A-Za-z_$][\w$]*))?)\s*from\s*['"][^'"]*['"];?/gu, (_, ns) => {
+                        if (ns) exported.push(`${ns}: {}`)
                         return ""
+                    })
+                    .replace(/export\s+default\s+(?:(async\s+)?(function|class)(?![\p{L}\p{N}_$])(\s*\*)?(?!\s*extends\b)\s*([\p{L}_$][\p{L}\p{N}_$]*))?/gu, (_, asyncKw, kw, star, n) => {
+                        if (n) {
+                            exported.push(`default: ${n}`)
+                            return `${asyncKw ?? ""}${kw}${star ?? ""} ${n}`
+                        }
+                        exported.push("default: __mockdDefault")
+                        return "const __mockdDefault = "
+                    })
+                    .replace(/export\s+(?:(async\s+)?(function|class|const|let|var)(?![\p{L}\p{N}_$])(\s*\*)?\s*([\p{L}_$][\p{L}\p{N}_$]*)|\{([^}]*)\})/gu, (_, asyncKw, kw, star, n, spec) => {
+                        if (spec !== undefined) {
+                            spec.split(",").forEach((s: string) => {
+                                const [orig, alias] = s.trim().split(/\s+as\s+/)
+                                exported.push(alias ? `${alias}: ${orig}` : orig)
+                            })
+                            return ""
+                        }
+                        exported.push(n)
+                        return `${asyncKw ?? ""}${kw}${star ?? ""} ${n}`
                     })
                 if (exported.length) code += `\nreturn { ${exported.join(", ")} }`
                 return (new Function(code))()
